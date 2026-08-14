@@ -47,11 +47,24 @@
      from Holding to Stacked is where walls and bottleneck rounds arrive
      together, so it is the biggest one. */
   var SEC_PER_ARROW = {
-    clear: 1.10,       // Clear Skies 4x5 — nearly everything is free on sight
-    light: 1.20,       // Light Traffic 5x6 — real ordering appears
-    holding: 1.45,     // Holding 6x7 — first walls
-    stacked: 1.75,     // Stacked 6x8 — walls plus width-1 rounds
-    gridlock: 2.00     // Gridlock 7x9 — long rays, dense traps
+    clear: 1.10,       // 4x5 — nearly everything is free on sight
+    light: 1.20,       // 5x6 — real ordering appears
+    holding: 1.45,     // 6x7 — first walls
+    stacked: 1.75,     // 6x8 — walls plus width-1 rounds
+    gridlock: 2.00,    // 7x9 — long rays, dense traps
+
+    /* The top two tiers are the SAME 63 cells as gridlock — the grid cannot
+       grow without breaking the 44px tap floor — so what rises is not the
+       amount of tapping but the amount of looking before each tap. Their bands
+       gate minRoundWidth to exactly 1 with a forced run of 10+ (tier 6) and 16+
+       (tier 7): stretches where the whole board offers ONE legal move and the
+       player has to find it. Every one of those taps is a full board scan, and
+       the per-arrow figure is what pays for it.
+
+       Keyed by tier KEY, never by display name — the names are a one-line
+       change in js/meta-config.js and must never reach a lookup. */
+    groundstop: 2.20,  // 7x9 — long forced runs; one legal move at a time
+    closed: 2.40       // 7x9 — the longest runs, and almost every blocker is a plane
   };
 
   var SEC_PER_ROUND = 2.0;   // each planning round is a fresh read of the board

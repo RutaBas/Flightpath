@@ -149,6 +149,21 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
 
 /* ---------------------------------------------------------------- home */
 
+/* Home-screen spacers. They SHRINK before anything else does — `flex:0 1 auto`
+   with a floor per spacer — so a screen that is a little too short for seven
+   tier rows gives up whitespace rather than scrolling or squashing a row under
+   the tap floor.
+
+   Deliberately not a `max-height` media query. A query cannot see the safe-area
+   insets, and the installed app is exactly where the space goes missing: at
+   375x812 the notch and home bar take 78px, which is enough to overflow the
+   ladder by 7px while the media query still reads a 812px-tall viewport and
+   trims nothing. Flex shrink measures the box that actually exists. */
+.hgap{flex:0 1 auto}
+.hgap-a{height:14px;min-height:6px}
+.hgap-b{height:20px;min-height:10px}
+.hgap-c{height:16px;min-height:8px}
+
 /* THE LADDER IS THE DOMINANT ELEMENT ON THE HOME SCREEN.
    It absorbs the slack instead of a single dead gap above the bottom row:
    `.tiers` grows, its rows grow with it between a 56px floor (well clear of the
@@ -157,16 +172,41 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
    than pooling it in one 225px void. */
 .tiers{
   display:flex;flex-direction:column;gap:var(--s2);
-  flex:1 1 auto;min-height:0;justify-content:space-between;
+  /* grow yes, shrink NO. If the ladder shrank it would clip its own rows
+     instead of letting the layer scroll, and a clipped row is a row you cannot
+     tap. The spacers above absorb the squeeze first; past that the layer
+     scrolls (.layer.scroll), which on a seven-tier ladder is the honest
+     outcome on an SE-class screen. */
+  flex:1 0 auto;justify-content:space-between;
 }
 .tier{
-  display:flex;align-items:center;gap:var(--s3);
+  display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;
   padding:11px var(--s3);border-radius:10px;
   background:rgba(36,42,46,.82);border:1px solid rgba(195,204,200,.13);
   width:100%;text-align:left;color:var(--ink);
   font-family:'Archivo',system-ui,sans-serif;cursor:pointer;
   flex:1 1 auto;min-height:56px;max-height:80px;
 }
+/* The row's second line. It exists so the row height carries information
+   rather than padding — a bar for levels done (or, when locked, progress
+   toward the unlock) and a running star tally. */
+.tier .meter{
+  flex-basis:100%;display:flex;align-items:center;gap:10px;
+  margin-top:-2px;
+}
+.tier .meter .bar{
+  flex:1;height:4px;border-radius:2px;margin-top:0;
+  background:rgba(195,204,200,.16);overflow:hidden;
+}
+.tier .meter .bar i{
+  display:block;height:100%;border-radius:2px;background:var(--ok);
+  transition:width .35s var(--ease);
+}
+.tier.locked .meter .bar i{background:var(--dim)}
+.tier .tally{
+  font-size:9px;color:var(--dim);letter-spacing:.06em;white-space:nowrap;
+}
+.tier .tally b{color:var(--accent);font-weight:400}
 /* Pinned to the bottom, but by its own margin — not by `margin-top:auto`,
    which is what put the whole slack in one place. */
 .homefoot{display:flex;gap:var(--s2);flex:0 0 auto;margin-top:var(--s3)}

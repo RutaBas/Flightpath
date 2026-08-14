@@ -30,35 +30,51 @@
 
 var Meta = (function () {
 
-  /* The ladder, exactly as signed off at the design gate (design-brief.md,
-     L3 · Airspace). Grid sizes are carried for the UI; the generator owns the
-     real ones and js/game.js reads them from it, so these are labels, not a
-     second source of truth. */
-  var TIER_DEFS = [
-    {
-      key: "clear", name: "Clear Skies", grid: "4×5", tier: 1, levels: 40,
-      par: function (n) { return FPLevels.parFor("clear", n); }
-    },
-    {
-      key: "light", name: "Light Traffic", grid: "5×6", tier: 2, levels: 40,
-      par: function (n) { return FPLevels.parFor("light", n); }
-    },
-    {
-      key: "holding", name: "Holding", grid: "6×7", tier: 3, levels: 40,
-      par: function (n) { return FPLevels.parFor("holding", n); }
-    },
-    {
-      key: "stacked", name: "Stacked", grid: "6×8", tier: 4, levels: 40,
-      par: function (n) { return FPLevels.parFor("stacked", n); }
-    },
-    {
-      key: "gridlock", name: "Gridlock", grid: "7×9", tier: 5, levels: 40,
-      par: function (n) { return FPLevels.parFor("gridlock", n); },
-      /* The one gate on the ladder. 100 distinct levels cleared — two and a
-         half tiers — before the hardest airspace opens. */
-      requires: { cleared: 100 }
-    }
+  /* ============================ THE LADDER ==============================
+
+     THE ONLY PLACE A TIER'S DISPLAY NAME EXISTS. Nothing else in the game —
+     no storage key, no level-table key, no save, no rank curve, no par lookup —
+     ever sees a name; they all key off `key`, which is permanent. Renaming
+     "Ground Stop" is editing one string on one line here, and it cannot
+     invalidate a single save.
+
+     Everything structural (the generator's tier index, the grid, the level
+     count) is READ from the baked table's ORDER, which was written from the
+     generator's own band table at bake time. So this list carries exactly two
+     decisions: what a tier is called, and what it takes to open it. Adding a
+     tier is one row here plus one row in scripts/build-levels.js.
+
+     THE GATES. Cumulative clears across the whole ladder, not per tier, so a
+     player who bounces between tiers still makes progress toward the top:
+     Gridlock at 100 (two and a half tiers), Ground Stop at 150, Airspace
+     Closed at 200. */
+  var LADDER = [
+    { key: "clear", name: "Clear Skies" },
+    { key: "light", name: "Light Traffic" },
+    { key: "holding", name: "Holding" },
+    { key: "stacked", name: "Stacked" },
+    { key: "gridlock", name: "Gridlock", requires: { cleared: 100 } },
+    { key: "groundstop", name: "Ground Stop", requires: { cleared: 150 } },
+    { key: "closed", name: "Airspace Closed", requires: { cleared: 200 } }
   ];
+
+  var TIER_DEFS = LADDER.map(function (t) {
+    var spec = FPLevels.specFor(t.key);
+    if (!spec) throw new Error("flightpath: no baked levels for tier '" + t.key + "'");
+    return {
+      key: t.key,
+      name: t.name,
+      grid: spec.w + "×" + spec.h,          // from the generator's own band table
+      tier: spec.tier,                       // the generator's 1-based index
+      levels: FPLevels.LEVELS_PER_TIER,
+      requires: t.requires,
+      /* Par is per level, straight out of the same baked row the seed came
+         from, so the ladder and the daily can never price a board differently. */
+      par: (function (key) {
+        return function (n) { return FPLevels.parFor(key, n); };
+      })(t.key)
+    };
+  });
 
   /* THE STAR RULE. Settled at intake, not open at the design gate: three stars
      for a clean clear, two for one slip OR one hint, one for clearing it.
@@ -125,12 +141,25 @@ var Meta = (function () {
     return d ? d.tier : 1;
   };
 
+  /* Ladder-wide totals, DERIVED — never a literal. Every "x / 280" and
+     "y / 840" on a stats screen reads these, so growing the ladder moves them
+     without anyone having to remember. A hard-coded 200 in a stats panel is
+     the classic way a new tier ships half-wired. */
+  meta.totalLevels = function () { return TIER_DEFS.length * FPLevels.LEVELS_PER_TIER; };
+  meta.totalStars = function () { return meta.totalLevels() * 3; };
+
   /* ------------------------------------------------------------- migration
 
      Players from the pre-meta build have fp:progress — { stars: {1..200: n},
      cleanRun, lastLevel } written by js/storage.js, on a GLOBAL 1..200 level
      numbering. The library stores per-tier ladders, so the numbers have to be
      re-homed: level 47 becomes light #7.
+
+     THE 200 BELOW IS HISTORY, NOT A TOTAL. The pre-meta build shipped five
+     tiers of forty, so a legacy save can only ever name levels 1-200 and can
+     only ever land in the first five tiers. It must NOT be updated when the
+     ladder grows — raising it to 280 would start mapping numbers that build
+     never wrote. Every live total is derived from the config instead.
 
      store.migrate() is idempotent and records its version even when the source
      data is absent, so this runs exactly once per install either way, and a

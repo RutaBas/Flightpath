@@ -248,8 +248,11 @@ var MetaUI = (function () {
               '<span class="big">UNRANKED</span>' +
               '<span class="mono lbl">CLEAR A LEVEL TO BE PLACED</span></div>') +
           '<div class="stats" style="margin-bottom:var(--s3)">' +
-            '<div class="row"><span class="k">LEVELS CLEARED</span><span class="v">' + totals.clearedCount + " / 200</span></div>" +
-            '<div class="row"><span class="k">STARS</span><span class="v warn">' + totals.totalStars + " / 600</span></div>" +
+            /* Derived from the config, never a literal — the ladder grows. */
+            '<div class="row"><span class="k">LEVELS CLEARED</span><span class="v">' +
+              totals.clearedCount + " / " + Meta.totalLevels() + "</span></div>" +
+            '<div class="row"><span class="k">STARS</span><span class="v warn">' +
+              totals.totalStars + " / " + Meta.totalStars() + "</span></div>" +
             '<div class="row"><span class="k">DAILIES SOLVED</span><span class="v">' + dstats.solved + "</span></div>" +
             '<div class="row"><span class="k">BEST STREAK</span><span class="v">' + dstats.best + "</span></div>" +
           "</div>" +

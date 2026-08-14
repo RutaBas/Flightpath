@@ -14,16 +14,21 @@
    old shell forever and never sees the fix.
 
      flightpath-v1  2026-08-13  first shipped UI (steps 6 + 7)
-     flightpath-v2  2026-08-13  meta-layer mounted: js/meta/*, levels, par,
+     flightpath-v3  2026-08-13  meta-layer mounted: js/meta/*, levels, par,
                                 meta-config, meta-ui — all new files, so an
                                 un-bumped cache would have served the old
                                 index.html and none of them
+     flightpath-v4  2026-08-13  ladder grew to 7 tiers: js/levels.js re-baked
+                                (280 rows), meta-config, par, meta-ui and the
+                                home CSS all changed. Tiers 1-5 are byte-for-byte
+                                the same rows, but the FILE changed, so every
+                                installed player must be served the new one
 
    Anything missing from PRECACHE 404s OFFLINE ONLY — which passes every test
    run at a desk. Install to the home screen and switch on airplane mode before
    calling this done. */
 
-var CACHE_VERSION = "flightpath-v2";
+var CACHE_VERSION = "flightpath-v4";
 
 /* index.html, walked top to bottom. Google Fonts is deliberately absent: it is
    cross-origin, is never intercepted below, and the stack falls back to

@@ -97,17 +97,55 @@ the design gate; these are placeholders.
 | 3 | 6×7 | 24–32 | 0–2 | 6–9 | first walls |
 | 4 | 6×8 | 32–42 | 2–4 | 9–13 | `minRoundWidth` gated to 1–2 |
 | 5 | 7×9 | 44–58 | 3–6 | 13–26 | long rays, dense traps |
+| 6 | 7×9 | 42–56 | 3–6 | 21–28 | same board, deeper chains |
+| 7 | 7×9 | 42–58 | 1–4 | 29–46 | long forced runs |
 
 Two bands are tighter in code than the prose above originally implied, both deliberate:
 tier 5's depth is **closed at 26** (an exact band needs an upper bound; the observed max is
 21), and tier 4's "bottleneck rounds" note is enforced as a checked `minRoundWidth ∈ [1,2]`.
 
-Tier 5 is the expensive one: 63 cells must hold 44–58 arrows plus 3–6 walls, so the very
-top of the band (58 + 6 = 64) is arithmetically unreachable and those draws die on arrival.
-Measured acceptance is 11.1%, worst seed in 1000 needing 61 attempts against a budget of
-1200 — ~20× headroom, 2.76s for a 1000-seed sweep. Left as specified rather than trimmed;
-if tier 5 ever needs to be cheaper, the lever is the `sky` construction parameter, which is
-not part of the gate.
+Tier 5 is the expensive one at its size: 63 cells must hold 44–58 arrows plus 3–6 walls, so
+the very top of the band (58 + 6 = 64) is arithmetically unreachable and those draws die on
+arrival. Measured acceptance 11.35%.
+
+### The last three tiers share a grid, and why
+
+**7×9 is the ceiling in both directions**, measured on real devices rather than assumed:
+
+| Device | Board area | Tile at 7 cols | Max rows |
+|---|---|---|---|
+| 390×844 | 366×662 | 45.7px | 12 |
+| **375×667 (iPhone SE)** | **359×485** | **44.8px** | **9** |
+
+Boards must be identical on every device, so the SE binds. Eight columns gives 39.4px and a
+tenth row drops below 44px — both break the tap-target floor. So tiers 6 and 7 cannot be
+*bigger* than tier 5; they are harder **structurally**.
+
+Three findings from the frontier sweep that the design did not anticipate:
+
+- **Tier 5's depth ceiling was a sampler artefact, not a structural limit.** A serpentine
+  chain reaches depth ≈ arrow count, so 7×9 structurally allows depth near 60. Tier 5
+  stopped at 21 only because of its proposal distribution. The lever is `rayBias`: a chain
+  grows only by dropping a blocker *on the current head's ray*, so a short-rayed head ends
+  it and a zero-length ray ends it permanently.
+- **Walls are an anti-lever.** Contrary to the original design note, adding walls makes
+  boards *easier*, not harder — every wall truncates lanes, so fewer cells have a clear ray
+  and the chain has fewer places to grow. Median depth falls 23 → 17 as walls go 0 → 3-6,
+  and acceptance at the tier-7 band collapses from 5.55% (0–2 walls) to 0.27% (3–6). This
+  is why **tier 7 has *fewer* walls than tier 5** — a measured decision, not a softening.
+- **`minRoundWidth` is useless as a discriminator up here** — it is 1 at the median from
+  tier 5 onward. What actually separates the hard tiers is the *run*: the longest streak of
+  consecutive width-1 rounds, where only one arrow on the whole board is legal. Medians:
+  T5 10, T6 17, T7 25. `accepts()` therefore gained an opt-in `forcedRun` band, absent from
+  tiers 1–5 so their behaviour is provably unchanged.
+
+Because grid size can no longer separate the top three tiers, separation is enforced on
+**two disjoint axes at once** — effort windows `[190,285] / [286,352] / [353,520]` and depth
+`[13,26] / [21,28] / [29,46]` — which makes cross-tier acceptance arithmetically impossible
+rather than merely unobserved.
+
+Measured acceptance: tier 6 **9.43%** (worst 88 attempts of a 2000 budget), tier 7 **1.70%**
+(worst 382 of 6000). Zero dead seeds in 1000 seeds per tier.
 
 **Grid width caps at 7 columns.** Measured, not guessed: at a 390 px viewport, with 12 px
 layer padding, 8 px board padding and 5 px gutters, the usable inner width is 350 px, so a

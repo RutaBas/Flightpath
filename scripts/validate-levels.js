@@ -2,7 +2,7 @@
 
 /* FLIGHTPATH — validate the baked level table.  node scripts/validate-levels.js
 
-   Runs over ALL 200 levels, not a sample. A level table is shipped data: if one
+   Runs over EVERY level in the baked table, not a sample. A level table is shipped data: if one
    row rebuilds a board that no longer certifies, that level is unplayable on
    every device at once and nothing at runtime will tell you.
 
@@ -16,7 +16,10 @@
      6. par is the value js/par.js computes for that graded board
    And across the whole table:
      7. no two levels produce an identical board (compared by key, not hash)
-     8. effort rises monotonically within every tier — the ramp is real */
+     8. effort rises monotonically within every tier — the ramp is real
+
+   The tier list comes from the table's own ORDER, so a new tier is covered the
+   moment it is baked; there is no list here to forget to extend. */
 
 const Board = require("../js/board.js");
 const Solver = require("../js/solver.js");
@@ -24,13 +27,12 @@ const Generator = require("../js/generator.js");
 const FPPar = require("../js/par.js");
 const FPLevels = require("../js/levels.js");
 
-const TIERS = [
-  { key: "clear", tier: 1, name: "Clear Skies" },
-  { key: "light", tier: 2, name: "Light Traffic" },
-  { key: "holding", tier: 3, name: "Holding" },
-  { key: "stacked", tier: 4, name: "Stacked" },
-  { key: "gridlock", tier: 5, name: "Gridlock" }
-];
+/* Derived from the baked table's own ORDER, so adding a tier needs no edit
+   here and this gate can never quietly skip one. Display names are NOT read —
+   they live only in js/meta-config.js, and a rename must not touch this file
+   or its verdict. Tiers are identified by key, as they are everywhere data is
+   persisted. */
+const TIERS = FPLevels.ORDER.map((o) => ({ key: o.key, tier: o.tier }));
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -51,6 +53,7 @@ console.log("   table version " + FPLevels.VERSION + ", " +
 for (const spec of TIERS) {
   const band = Generator.tierFor(spec.tier);
   const efforts = [];
+  const runs = [];
   let worstAttempts = 0;
 
   for (let n = 1; n <= FPLevels.LEVELS_PER_TIER; n++) {
@@ -78,6 +81,16 @@ for (const spec of TIERS) {
     check(inBand(g.effort, band.effort), where + ": effort " + g.effort + " outside " + band.effort);
     check(inBand(g.minRoundWidth, band.minRoundWidth),
       where + ": minRoundWidth " + g.minRoundWidth + " outside " + band.minRoundWidth);
+    /* Only tiers 6+ declare forcedRun — the longest stretch of consecutive
+       rounds offering exactly ONE legal tap. It is what makes the top two
+       tiers harder on a grid that cannot grow, so it is gated, not decorative.
+       Tiers 1-5 have no such band and are unaffected. */
+    if (band.forcedRun) {
+      var run = Generator.longestForcedRun(g);
+      check(inBand(run, band.forcedRun),
+        where + ": forcedRun " + run + " outside " + band.forcedRun);
+      runs.push(run);
+    }
     check(res.board.w === band.w && res.board.h === band.h,
       where + ": grid " + res.board.w + "x" + res.board.h + " != " + band.w + "x" + band.h);
 
@@ -101,13 +114,14 @@ for (const spec of TIERS) {
 
   ramp[spec.key] = efforts;
   console.log(
-    spec.name.padEnd(14) +
+    (spec.key + " (t" + spec.tier + ")").padEnd(16) +
     " L1 " + efforts[0].toFixed(1).padStart(6) +
     "   L20 " + efforts[19].toFixed(1).padStart(6) +
     "   L40 " + efforts[39].toFixed(1).padStart(6) +
     "   band " + band.effort[0] + "-" + band.effort[1] +
     "   par " + FPPar.fmt(FPLevels.parFor(spec.key, 1)) + " → " + FPPar.fmt(FPLevels.parFor(spec.key, 40)) +
-    "   worst rebuild " + worstAttempts + " attempt" + (worstAttempts === 1 ? "" : "s")
+    "   worst rebuild " + String(worstAttempts).padStart(4) + " att" +
+    (runs.length ? "   forced run " + Math.min.apply(null, runs) + "-" + Math.max.apply(null, runs) : "")
   );
 }
 

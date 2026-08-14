@@ -99,13 +99,23 @@ var WALL = Board.WALL;
    every tier's MEDIAN effort sits above the previous tier's MAXIMUM, measured
    over 800 candidates per tier: 74 / 95 / 126 / 160 / 216 against maxima of
    87 / 112 / 149 / 190. Tier identity is never ambiguous regardless, because
-   the grid size differs per tier and is gated first.
+   the grid size differs per tier and is gated first — EXCEPT above tier 5,
+   where the grid is pinned at 7x9 by the tap-target floor and cannot differ.
+   See the long note before tier 6 for how those three tiers are separated
+   instead.
 
      arrows/walls/depth   inclusive [min, max], from SPEC.md
      minRoundWidth        inclusive [min, max] on the tightest bottleneck.
                           Tier 4's "bottleneck rounds of width 1-2" is [1, 2];
                           other tiers accept anything.
      effort               inclusive [min, max] composite window
+     forcedRun            OPTIONAL, and absent from tiers 1-5, whose behaviour
+                          is therefore unchanged. Inclusive [min, max] on the
+                          longest run of CONSECUTIVE width-1 rounds — taps in a
+                          row where the whole board offers a single legal move.
+                          minRoundWidth only says such a round exists SOMEWHERE,
+                          which is true of nearly every deep board and so cannot
+                          tell two deep tiers apart; the RUN can.
      sky                  inclusive [min, max] carved cells (shape variety)
      aim                  depth the proposal distribution steers toward; a
                           sub-range of `depth`, never wider than it. NOT a gate
@@ -143,13 +153,89 @@ var TIERS = [
     arrows: [44, 58], walls: [3, 6], depth: [13, 26],
     minRoundWidth: [1, 99], effort: [190, 285], sky: [0, 10],
     aim: [14, 20], bias: { block: [1.8, 3.6], ray: [0.0, 0.9] }, attempts: 1200
+  },
+
+  /* ---------------------------------------------------- above Gridlock ----
+
+     THE GRID CANNOT GROW. Measured in Chrome: at 390x844 the board area is
+     366x662, so 7 columns is a 45.7px tile and 12 rows fit. At 375x667
+     (iPhone SE) the board area is 359x485 — 7 columns is 44.8px and only NINE
+     rows fit. 8 columns is 39.4px and a 10th row is under 44px, both below the
+     tap-target floor, and boards must be identical on every device, so the SE
+     binds at 7 wide x 9 tall. Tier 5 is already there. Tiers 6 and 7 are
+     therefore harder STRUCTURALLY, on the same 63 cells.
+
+     WHAT THE FEASIBILITY SWEEP FOUND (scripts/analyze-tiers.js, all numbers
+     printed by that script, none of them guessed):
+
+     · depth is NOT near its ceiling. Tier 5 tops out at depth 21 because of
+       the PROPOSAL DISTRIBUTION, not the grid: a serpentine chain (a column of
+       N-facing arrows, then a column hanging off its foot, and so on) reaches
+       depth ~= the arrow count, so 7x9 structurally allows depth near 60. The
+       deepest board this sampler has produced is depth 40.
+     · the lever that unlocks it is rayBias, NOT aim or blockBias. Sweeping aim
+       from 14-20 to 40-55 and blockBias from 1.8 to 20 left median depth stuck
+       at 9-10 and the max at ~20. Raising rayBias from 0-0.9 to 12-18 moved
+       median depth 9 -> 23 and the max 23 -> 39. The reason is mechanical: a
+       chain only grows by dropping a blocker ON the head's ray, so a head with
+       a short ray ends the chain, and a zero-length ray ends it permanently.
+       Long rays keep the chain extendable.
+     · walls are an ANTI-lever. Holding everything else fixed, median depth
+       falls 23 -> 20 -> 19 -> 17 as walls go 0 -> 1-3 -> 2-4 -> 3-6, and
+       acceptance at the tier-6 band falls 36.2% -> 15.6% -> 9.9% -> 5.5% ->
+       1.4% across walls 0-3 / 2-5 / 3-6 / 4-7 / 6-9. Every wall truncates
+       lanes, so fewer cells have a clear ray and chains die sooner. More walls
+       is not more difficulty here; it is less depth for more search cost.
+     · trapFraction and meanRay come along for free with depth: 0.68 -> 0.80
+       and 1.94 -> 3.5 from tier 5 to tier 7. They are consequences, not knobs.
+
+     SEPARATION is engineered on TWO disjoint axes at once, so no board can
+     satisfy two bands regardless of what the sampler does:
+
+       effort   T5 [190,285]   T6 [286,352]   T7 [353,520]
+       depth    T5 [ 13, 26]   T6 [ 21, 28]   T7 [ 29, 46]
+
+     effort ~= 10*depth + 73 up here (18 for minRoundWidth 1, ~20 for trap 0.8,
+     ~5 for meanRay 2.5, ~30 for 50 arrows), which is where the windows were
+     cut. The medians measured over 150 seeds are 213 / 303 / 374 against
+     maxima of 278 / 346, so median(Tn) > max(Tn-1) holds with room, and the
+     effort windows being disjoint makes cross-tier acceptance arithmetically
+     impossible rather than merely unobserved.
+
+     THE EXISTING EFFORT FORMULA IS FINE. It is dominated by depth and depth
+     still has headroom, so it separates these tiers without re-weighting. No
+     new term was needed. */
+  {
+    /* Depth is the whole story: tier 5's median is 15, this is 23. Walls stay
+       at Gridlock's 3-6 — they buy nothing, but dropping them would make the
+       harder tier LOOK emptier, and 9.9% acceptance is affordable. */
+    tier: 6, name: "tier-6", w: 7, h: 9,
+    arrows: [42, 56], walls: [3, 6], depth: [21, 28],
+    minRoundWidth: [1, 1], effort: [286, 352], sky: [0, 6],
+    forcedRun: [10, 99],
+    aim: [28, 38], bias: { block: [6, 10], ray: [12, 18] }, attempts: 2000
+  },
+  {
+    /* The top of what this sampler reaches at a sane cost. Walls come DOWN to
+       1-4 and that is a measured decision, not a softening: at depth 29+ every
+       extra wall costs roughly a factor 2.2 in acceptance (walls 0-2 5.55%,
+       1-4 1.83%, 2-5 0.82%, 3-6 0.27%) and buys no measured difficulty. At
+       walls 3-6 a single level needs 367 attempts on average and 1485 in the
+       worst of 150 seeds, which is a visible hang on a phone; at 1-4 it is 55
+       and 305. The tier's identity is that almost every blocker is another
+       plane. */
+    tier: 7, name: "tier-7", w: 7, h: 9,
+    arrows: [42, 58], walls: [1, 4], depth: [29, 46],
+    minRoundWidth: [1, 1], effort: [353, 520], sky: [0, 6],
+    forcedRun: [16, 99],
+    aim: [34, 46], bias: { block: [6, 10], ray: [12, 18] }, attempts: 6000
   }
 ];
 
 /* tierFor(n) — tiers are 1-BASED, matching SPEC.md's table. */
 function tierFor(n) {
   var t = TIERS[(n | 0) - 1];
-  if (!t) throw new Error("flightpath: unknown tier " + n + " (tiers are 1..5)");
+  if (!t) throw new Error("flightpath: unknown tier " + n + " (tiers are 1.." + TIERS.length + ")");
   return t;
 }
 
@@ -414,6 +500,23 @@ function buildCandidate(spec, rng) {
 
 function inBand(v, band) { return v >= band[0] && v <= band[1]; }
 
+/* longestForcedRun(g) — the longest run of CONSECUTIVE width-1 rounds.
+   Derived from grade()'s own roundWidths, so it needs nothing new from the
+   solver. minRoundWidth already says "somewhere on this board exactly one
+   arrow was legal"; that is true of almost every deep board and so cannot
+   distinguish one deep tier from another. The RUN is the thing that is
+   actually different to play: eight consecutive rounds of width 1 is eight
+   taps in a row where the whole board offers a single legal move. */
+function longestForcedRun(g) {
+  var widths = g.roundWidths || [];
+  var run = 0, best = 0;
+  for (var i = 0; i < widths.length; i++) {
+    if (widths[i] === 1) { run++; if (run > best) best = run; }
+    else run = 0;
+  }
+  return best;
+}
+
 /* accepts(spec, board, g) — EXACT band match for the tier that was asked for.
    Returns { ok, reason }. Nothing here knows how the board was built. */
 function accepts(spec, board, g) {
@@ -425,6 +528,12 @@ function accepts(spec, board, g) {
   if (!inBand(g.depth, spec.depth)) return { ok: false, reason: "depth" };
   if (!inBand(g.minRoundWidth, spec.minRoundWidth)) return { ok: false, reason: "minRoundWidth" };
   if (!inBand(g.effort, spec.effort)) return { ok: false, reason: "effort" };
+  /* OPT-IN, and absent from tiers 1-5 by design: those bands are unchanged and
+     this branch never runs for them. Only a tier that declares `forcedRun`
+     is gated on it. */
+  if (spec.forcedRun && !inBand(longestForcedRun(g), spec.forcedRun)) {
+    return { ok: false, reason: "forcedRun" };
+  }
   return { ok: true, reason: "" };
 }
 
@@ -451,7 +560,7 @@ function generate(seed, tierIndex, opts) {
 
   var rejects = {
     build: 0, grid: 0, unsolved: 0, stuck: 0, arrows: 0, walls: 0,
-    depth: 0, minRoundWidth: 0, effort: 0, truth: 0
+    depth: 0, minRoundWidth: 0, effort: 0, forcedRun: 0, truth: 0
   };
   var soundnessFailures = [];
 
@@ -563,6 +672,7 @@ var API = {
   generate: generate,
   sweep: sweep,
   accepts: accepts,
+  longestForcedRun: longestForcedRun,
   buildCandidate: buildCandidate,
   carveSky: carveSky,
   maskedConnected: maskedConnected,

@@ -212,6 +212,26 @@ function myClosure(m) {
   };
 }
 
+/* myForcedRun(widths) — the longest streak of CONSECUTIVE width-1 rounds.
+
+   SPEC.md: "the longest streak of consecutive width-1 rounds, where only one
+   arrow on the whole board is legal". Written from that sentence; the shipped
+   generator.longestForcedRun() is NEVER called by this harness, it is only
+   ever compared against. Deliberately a different shape of loop (scan for the
+   start of a run, then count it) so a shared off-by-one is unlikely. */
+function myForcedRun(widths) {
+  var best = 0;
+  var i = 0;
+  while (i < widths.length) {
+    if (widths[i] !== 1) { i++; continue; }
+    var j = i;
+    while (j < widths.length && widths[j] === 1) j++;
+    if (j - i > best) best = j - i;
+    i = j;
+  }
+  return best;
+}
+
 /* My grade, transcribed from SPEC.md's effort formula, not from solver.js. */
 function myGrade(m) {
   var cl = myClosure(m);
@@ -233,11 +253,15 @@ function myGrade(m) {
   }
   var bottleneck = minW > 0 ? 1 / minW : 0;
   var effort = 10 * cl.depth + 18 * bottleneck + 25 * trap + 2 * meanRay + 0.6 * n;
+  var widths = [];
+  for (var rw = 0; rw < cl.rounds.length; rw++) widths.push(cl.rounds[rw].length);
   return {
     arrows: n,
     walls: myWallCount(m),
     depth: cl.depth,
     minRoundWidth: minW,
+    roundWidths: widths,
+    forcedRun: myForcedRun(widths),
     trapFraction: trap,
     meanRay: meanRay,
     maxRay: maxRay,
@@ -348,19 +372,127 @@ function randomModel(rand, opts) {
   return { w: w, h: h, g: g };
 }
 
-/* SPEC.md's tier table, transcribed here by hand so the generator's own TIERS
-   constant is checked against the contract rather than against itself. */
-var SPEC_TIERS = [
-  { tier: 1, w: 4, h: 5, arrows: [10, 14], walls: [0, 0], depthMin: 3, depthMax: 4 },
-  { tier: 2, w: 5, h: 6, arrows: [16, 22], walls: [0, 0], depthMin: 4, depthMax: 6 },
-  { tier: 3, w: 6, h: 7, arrows: [24, 32], walls: [0, 2], depthMin: 6, depthMax: 9 },
-  { tier: 4, w: 6, h: 8, arrows: [32, 42], walls: [2, 4], depthMin: 9, depthMax: 13 },
-  { tier: 5, w: 7, h: 9, arrows: [44, 58], walls: [3, 6], depthMin: 13, depthMax: Infinity }
+/* ------------------------------------------------------------- THE CONTRACT
+
+   SPEC.md's tier table plus the gated bands, transcribed HERE BY HAND so the
+   generator's own TIERS constant is checked against the contract rather than
+   against itself. If someone widens a band in js/generator.js, check 0a goes
+   red — the harness does not read the band it is meant to be policing.
+
+   Sources, all authoritative and read directly:
+     grid / arrows / walls / depth   SPEC.md tier table (lines 93-101)
+     minRoundWidth                   SPEC.md: tier 4 "gated to 1-2"; tiers 6-7
+                                     pinned at 1 (SPEC.md "minRoundWidth is
+                                     useless as a discriminator up here")
+     effort                          SPEC.md: "[190,285] / [286,352] /
+                                     [353,520]" for T5/T6/T7; T1-T4 from the
+                                     generator's measured windows
+     forcedRun                       SPEC.md: opt-in, "absent from tiers 1-5";
+                                     T6 [10,99], T7 [16,99]
+
+   forcedRun: null means the tier MUST NOT declare the band at all — that is
+   the "tiers 1-5 are provably unchanged" claim, asserted rather than assumed. */
+var CONTRACT = [
+  { tier: 1, w: 4, h: 5, arrows: [10, 14], walls: [0, 0], depth: [3, 4],
+    minRoundWidth: [1, 99], effort: [52, 92], forcedRun: null },
+  { tier: 2, w: 5, h: 6, arrows: [16, 22], walls: [0, 0], depth: [4, 6],
+    minRoundWidth: [1, 99], effort: [72, 118], forcedRun: null },
+  { tier: 3, w: 6, h: 7, arrows: [24, 32], walls: [0, 2], depth: [6, 9],
+    minRoundWidth: [1, 99], effort: [100, 156], forcedRun: null },
+  { tier: 4, w: 6, h: 8, arrows: [32, 42], walls: [2, 4], depth: [9, 13],
+    minRoundWidth: [1, 2], effort: [140, 200], forcedRun: null },
+  { tier: 5, w: 7, h: 9, arrows: [44, 58], walls: [3, 6], depth: [13, 26],
+    minRoundWidth: [1, 99], effort: [190, 285], forcedRun: null },
+  { tier: 6, w: 7, h: 9, arrows: [42, 56], walls: [3, 6], depth: [21, 28],
+    minRoundWidth: [1, 1], effort: [286, 352], forcedRun: [10, 99] },
+  { tier: 7, w: 7, h: 9, arrows: [42, 58], walls: [1, 4], depth: [29, 46],
+    minRoundWidth: [1, 1], effort: [353, 520], forcedRun: [16, 99] }
 ];
+var NT = CONTRACT.length;          /* 7 — every loop below is driven by this */
+var NEW_TIERS = [6, 7];
+
+/* Golden numbers captured from the LAST GREEN RUN of this harness, taken
+   before tiers 6 and 7 existed, over seeds 1..150. SPEC.md claims tiers 1-5
+   are "provably unchanged" by the tier 6/7 work; these frozen values are how
+   that claim is actually tested, rather than by re-reading the new code and
+   agreeing with it. Any drift in the tier 1-5 sampler moves one of these. */
+var GOLDEN_1_TO_5 = [
+  { tier: 1, effort: [56.2, 73.6, 85.9], depth: [3, 4], arrows: [10, 14], walls: [0, 0] },
+  { tier: 2, effort: [75.7, 96.6, 111.3], depth: [4, 6], arrows: [16, 22], walls: [0, 0] },
+  { tier: 3, effort: [107.8, 123.3, 148.9], depth: [6, 9], arrows: [24, 32], walls: [0, 2] },
+  { tier: 4, effort: [142, 165.5, 191.4], depth: [9, 13], arrows: [32, 41], walls: [2, 4] },
+  { tier: 5, effort: [193.4, 211.2, 260.3], depth: [13, 19], arrows: [44, 54], walls: [3, 6] }
+];
+
+/* Sampling budget, stated up front. Tier 7 accepts ~1.7% of candidates, so it
+   is ~20 ms per board against ~0.2 ms for tier 1; the counts below are the
+   SAME for every tier (no silent thinning) and the wall clock is reported at
+   the end so any future thinning is visible. */
+var SEEDS_SOUNDNESS = 40, SEEDS_PLAY = 12, SEEDS_UNGATED = 40,
+    SEEDS_STATS = 150, SEEDS_DETERMINISM = 20, SEEDS_VARIETY = 300,
+    SEEDS_HINT = 20, SEEDS_SERIAL = 30;
+
+var T_START = Date.now();
 
 console.log("FLIGHTPATH — independent verification harness");
 console.log("node " + process.version + "   " + new Date().toISOString());
 console.log("boards under audit come from js/generator.js; every oracle below is written in this file.");
+console.log("tiers under audit: 1.." + NT + " (tiers " + NEW_TIERS.join(" and ") +
+  " are new; every check below runs over ALL " + NT + ", no tier is skipped).");
+console.log("seeds per tier: soundness " + SEEDS_SOUNDNESS + ", play " + SEEDS_PLAY +
+  ", ungated " + SEEDS_UNGATED + ", stats " + SEEDS_STATS + ", determinism " +
+  SEEDS_DETERMINISM + ", variety " + SEEDS_VARIETY + ", hint " + SEEDS_HINT +
+  ", serialization " + SEEDS_SERIAL + " — identical for every tier.");
+
+/* =====================================================================
+   CHECK 0 — THE BANDS THEMSELVES
+   ===================================================================== */
+section("0. THE CONTRACT — the shipped bands are the ones SPEC.md declares");
+
+part(function () {
+  var T = Generator.TIERS;
+  var bad = [];
+  if (T.length !== NT) bad.push("TIERS.length " + T.length + " != " + NT);
+  for (var i = 0; i < Math.min(T.length, NT); i++) {
+    var c = CONTRACT[i], s = T[i];
+    function band(name) {
+      var a = c[name], b = s[name];
+      if (!a) return;
+      if (!b || b[0] !== a[0] || b[1] !== a[1]) {
+        bad.push("T" + c.tier + "." + name + " shipped " + JSON.stringify(b) +
+          " != contract " + JSON.stringify(a));
+      }
+    }
+    if (s.tier !== c.tier) bad.push("T" + c.tier + " tier field " + s.tier);
+    if (s.w !== c.w || s.h !== c.h) {
+      bad.push("T" + c.tier + " grid " + s.w + "x" + s.h + " != " + c.w + "x" + c.h);
+    }
+    if (s.w > 7) bad.push("T" + c.tier + " grid width " + s.w + " breaks the 7-column tap floor");
+    band("arrows"); band("walls"); band("depth"); band("minRoundWidth"); band("effort");
+    if (c.forcedRun === null) {
+      if (s.forcedRun !== undefined) {
+        bad.push("T" + c.tier + " declares forcedRun " + JSON.stringify(s.forcedRun) +
+          " but the contract says tiers 1-5 must NOT be gated on it");
+      }
+    } else {
+      band("forcedRun");
+    }
+  }
+  for (var t = 1; t <= NT; t++) {
+    try { Generator.tierFor(t); } catch (e) { bad.push("tierFor(" + t + ") threw: " + e.message); }
+  }
+  var threwOnUnknown = false;
+  try { Generator.tierFor(NT + 1); } catch (e) { threwOnUnknown = true; }
+  if (!threwOnUnknown) bad.push("tierFor(" + (NT + 1) + ") did not throw");
+
+  note("tiers shipped: " + T.length + "; grids " + T.map(function (x) { return x.w + "x" + x.h; }).join(" "));
+  note("forcedRun declared on: " + T.filter(function (x) { return x.forcedRun; })
+    .map(function (x) { return "T" + x.tier + JSON.stringify(x.forcedRun); }).join(" ") +
+    "   (absent on T1-T5, as the contract requires)");
+  if (bad.length) note("CONTRACT BREACHES: " + JSON.stringify(bad.slice(0, 6)));
+  check("0a shipped TIERS match the hand-transcribed contract band for band",
+    bad.length === 0, (NT * 7) + " band comparisons, " + bad.length + " breaches");
+});
 
 /* =====================================================================
    CHECK 1 — SOUNDNESS AGAINST GROUND TRUTH
@@ -375,8 +507,8 @@ part(function () {
   for (var s = 0; s < 3000; s++) boards.push(randomModel(rand));
   /* ...plus every generated board across all five tiers. */
   var genCount = 0;
-  for (var t = 1; t <= 5; t++) {
-    for (var seed = 1; seed <= 40; seed++) {
+  for (var t = 1; t <= NT; t++) {
+    for (var seed = 1; seed <= SEEDS_SOUNDNESS; seed++) {
       var r = Generator.generate(seed, t);
       if (r.board) { boards.push(fromBoard(r.board)); genCount++; }
     }
@@ -533,8 +665,8 @@ part(function () {
   var PLAY_ORDERS = 24;
   var plays = 0, playFails = 0, distinctTerminals = 0, taps = 0;
   var certified = [];
-  for (var t = 1; t <= 5; t++) {
-    for (var seed = 1; seed <= 12; seed++) {
+  for (var t = 1; t <= NT; t++) {
+    for (var seed = 1; seed <= SEEDS_PLAY; seed++) {
       var r = Generator.generate(seed, t);
       if (r.board) certified.push({ tier: t, seed: seed, m: fromBoard(r.board) });
     }
@@ -630,10 +762,10 @@ part(function () {
   var allUnsolvable = 0, allOffBand = 0, allBoards = 0, allFine = 0;
   var perTierOk = true;
 
-  for (var t = 1; t <= 5; t++) {
+  for (var t = 1; t <= NT; t++) {
     var spec = Generator.tierFor(t);
     var unsolvable = 0, offBand = 0, fine = 0, n = 0;
-    for (var seed = 1; seed <= 40; seed++) {
+    for (var seed = 1; seed <= SEEDS_UNGATED; seed++) {
       var r = Generator.generate(seed, t);
       if (!r.board) continue;
       var base = fromBoard(r.board);
@@ -681,22 +813,27 @@ section("4. GATE SUFFICIENT — every emitted board re-derived from its own stri
 var TIER_STATS = [];
 
 part(function () {
-  var SEEDS = 150;
+  var SEEDS = SEEDS_STATS;
   var totalBoards = 0, dead = 0;
   var notSolvable = 0, gradeMismatch = 0, specBandFail = 0, tierBandFail = 0;
-  var orderInvalid = 0;
+  var orderInvalid = 0, forcedRunFail = 0, widthsMismatch = 0;
   var firstBad = null;
 
-  for (var t = 1; t <= 5; t++) {
+  for (var t = 1; t <= NT; t++) {
     var spec = Generator.tierFor(t);
-    var sp = SPEC_TIERS[t - 1];
-    var efforts = [], depths = [], arrows = [], walls = [], minW = [];
-    var keys = [], models = [];
+    var sp = CONTRACT[t - 1];
+    var efforts = [], depths = [], arrows = [], walls = [], minW = [], runs = [];
+    var keys = [], models = [], attempts = [];
+    var worstAttempts = 0, candidates = 0, rejects = {};
 
     for (var seed = 1; seed <= SEEDS; seed++) {
       var r = Generator.generate(seed, t);
       if (!r.board) { dead++; continue; }
       totalBoards++;
+      attempts.push(r.attempts);
+      if (r.attempts > worstAttempts) worstAttempts = r.attempts;
+      candidates += r.attempts;
+      for (var rk in r.rejects) rejects[rk] = (rejects[rk] || 0) + r.rejects[rk];
 
       /* re-derive EVERYTHING from the serialized string, ignoring r.grade */
       var str = Board.serialize(r.board);
@@ -719,7 +856,7 @@ part(function () {
       if (m.w !== sp.w || m.h !== sp.h ||
           g.arrows < sp.arrows[0] || g.arrows > sp.arrows[1] ||
           g.walls < sp.walls[0] || g.walls > sp.walls[1] ||
-          g.depth < sp.depthMin || g.depth > sp.depthMax) {
+          g.depth < sp.depth[0] || g.depth > sp.depth[1]) {
         specBandFail++;
         if (!firstBad) firstBad = { tier: t, seed: seed, key: str, grade: g, spec: sp };
       }
@@ -745,26 +882,48 @@ part(function () {
         }
       }
 
+      /* forcedRun: gated only on tiers that declare it, but MEASURED on every
+         tier so the distributions can be compared. */
+      if (sp.forcedRun) {
+        if (g.forcedRun < sp.forcedRun[0] || g.forcedRun > sp.forcedRun[1]) {
+          forcedRunFail++;
+          if (!firstBad) {
+            firstBad = { tier: t, seed: seed, key: str, forcedRun: g.forcedRun, band: sp.forcedRun };
+          }
+        }
+      }
+      /* my round-width sequence must equal the shipped one — forcedRun is
+         derived from it, so a divergence here would poison the new gate */
+      if ((their.roundWidths || []).join(",") !== g.roundWidths.join(",")) {
+        widthsMismatch++;
+        if (!firstBad) firstBad = { tier: t, seed: seed, key: str, reason: "roundWidths differ" };
+      }
+
       efforts.push(g.effort); depths.push(g.depth); arrows.push(g.arrows);
-      walls.push(g.walls); minW.push(g.minRoundWidth);
+      walls.push(g.walls); minW.push(g.minRoundWidth); runs.push(g.forcedRun);
       keys.push(str); models.push(m);
     }
 
     TIER_STATS.push({
       tier: t, n: efforts.length, efforts: efforts, depths: depths,
-      arrows: arrows, walls: walls, minW: minW, keys: keys, models: models
+      arrows: arrows, walls: walls, minW: minW, runs: runs,
+      keys: keys, models: models, attempts: attempts, worstAttempts: worstAttempts,
+      candidates: candidates, rejects: rejects
     });
     note("tier " + t + ": " + efforts.length + "/" + SEEDS + " seeds produced a board; " +
       "arrows " + mn(arrows) + "-" + mx(arrows) + " (spec " + sp.arrows.join("-") + "), " +
       "walls " + mn(walls) + "-" + mx(walls) + " (spec " + sp.walls.join("-") + "), " +
-      "depth " + mn(depths) + "-" + mx(depths) + " (spec " + sp.depthMin + "-" +
-      (sp.depthMax === Infinity ? "inf" : sp.depthMax) + ")");
+      "depth " + mn(depths) + "-" + mx(depths) + " (spec " + sp.depth.join("-") + "), " +
+      "forcedRun " + mn(runs) + "-" + mx(runs) + " (median " + median(runs) +
+      (sp.forcedRun ? ", GATED " + sp.forcedRun.join("-") : ", not gated") + "), " +
+      "worst " + worstAttempts + " attempts of a " + Generator.tierFor(t).attempts + " budget");
   }
   if (firstBad) note("FIRST BAD BOARD: " + JSON.stringify(firstBad));
 
-  check("4a generate() never returns a dead seed across 750 calls",
-    dead === 0 && totalBoards === 750,
-    totalBoards + "/750 boards produced, " + dead + " seeds exhausted their attempt budget");
+  var expected = NT * SEEDS_STATS;
+  check("4a generate() never returns a dead seed across " + expected + " calls",
+    dead === 0 && totalBoards === expected,
+    totalBoards + "/" + expected + " boards produced, " + dead + " seeds exhausted their attempt budget");
   check("4b every emitted board is solvable when re-solved from its own string",
     notSolvable === 0, totalBoards + " boards re-solved independently, " + notSolvable + " unsolvable");
   check("4c my grade matches the shipped grade on every emitted board",
@@ -775,6 +934,38 @@ part(function () {
     tierBandFail === 0, tierBandFail + " boards outside the declared band");
   check("4f the generator's constructionOrder is legal play under my own rules",
     orderInvalid === 0, orderInvalid + " illegal orders");
+  check("4g my roundWidths sequence matches the shipped grade's on every board",
+    widthsMismatch === 0, widthsMismatch + " sequences differed over " + totalBoards + " boards");
+  check("4h every tier-6/7 board sits inside its declared forcedRun band",
+    forcedRunFail === 0,
+    "T6 gate " + JSON.stringify(CONTRACT[5].forcedRun) + ", T7 gate " +
+    JSON.stringify(CONTRACT[6].forcedRun) + " — " + forcedRunFail + " boards outside");
+
+  /* Tiers 1-5 must be BIT-FOR-BIT what they were before tiers 6/7 landed. */
+  var goldBad = [];
+  for (var gi = 0; gi < GOLDEN_1_TO_5.length; gi++) {
+    var G = GOLDEN_1_TO_5[gi];
+    var st = TIER_STATS[gi];
+    if (!st) { goldBad.push("T" + G.tier + " missing"); continue; }
+    var got = [f1(mn(st.efforts)), f1(median(st.efforts)), f1(mx(st.efforts))];
+    if (got[0] !== G.effort[0] || got[1] !== G.effort[1] || got[2] !== G.effort[2]) {
+      goldBad.push("T" + G.tier + " effort " + JSON.stringify(got) + " != golden " + JSON.stringify(G.effort));
+    }
+    if (mn(st.depths) !== G.depth[0] || mx(st.depths) !== G.depth[1]) {
+      goldBad.push("T" + G.tier + " depth " + mn(st.depths) + "-" + mx(st.depths) +
+        " != golden " + G.depth.join("-"));
+    }
+    if (mn(st.arrows) !== G.arrows[0] || mx(st.arrows) !== G.arrows[1]) {
+      goldBad.push("T" + G.tier + " arrows " + mn(st.arrows) + "-" + mx(st.arrows));
+    }
+    if (mn(st.walls) !== G.walls[0] || mx(st.walls) !== G.walls[1]) {
+      goldBad.push("T" + G.tier + " walls " + mn(st.walls) + "-" + mx(st.walls));
+    }
+  }
+  note("tier 1-5 regression vs the last green run BEFORE tiers 6/7 existed: " +
+    (goldBad.length ? JSON.stringify(goldBad) : "all 20 frozen values identical"));
+  check("4i tiers 1-5 are unchanged — 20 frozen effort/depth/arrow/wall values still exact",
+    goldBad.length === 0, goldBad.length + " drifted");
 });
 
 /* =====================================================================
@@ -790,7 +981,8 @@ part(function () {
     medians.push(med); maxes.push(mx(st.efforts));
     note("tier " + st.tier + " effort  min " + f1(mn(st.efforts)) + "  median " + f1(med) +
       "  max " + f1(mx(st.efforts)) + "   |  depth median " + median(st.depths) +
-      "  minRoundWidth " + mn(st.minW) + "-" + mx(st.minW));
+      "  minRoundWidth " + mn(st.minW) + "-" + mx(st.minW) +
+      "  forcedRun median " + median(st.runs));
   }
   for (var t = 1; t < TIER_STATS.length; t++) {
     var pass = medians[t] > maxes[t - 1];
@@ -800,15 +992,53 @@ part(function () {
   }
   check("5a each tier's MEDIAN effort exceeds the previous tier's MAXIMUM", ok, detail.join("; "));
 
+  /* ---- 5b-pre: is separation ARITHMETIC, or merely unobserved? ---------
+
+     Up to tier 5 the grid separated the tiers and cross-tier rejection was
+     structural. Tiers 5, 6 and 7 are ALL 7x9, so that crutch is gone and
+     SPEC.md instead claims two disjoint axes (effort and depth). I check that
+     claim per PAIR rather than believing the sentence: for every pair of
+     tiers, which gated bands are actually disjoint? One disjoint band is
+     sufficient to make cross-acceptance arithmetically impossible. */
+  var pairLines = [], pairsWithNoDisjointBand = [];
+  var BANDS = ["arrows", "walls", "depth", "minRoundWidth", "effort"];
+  function disjoint(a, b) { return a[1] < b[0] || b[1] < a[0]; }
+  for (var pa = 0; pa < NT; pa++) {
+    for (var pb = pa + 1; pb < NT; pb++) {
+      var A = CONTRACT[pa], B = CONTRACT[pb];
+      var dis = [];
+      if (A.w !== B.w || A.h !== B.h) dis.push("grid");
+      for (var bn = 0; bn < BANDS.length; bn++) {
+        if (disjoint(A[BANDS[bn]], B[BANDS[bn]])) dis.push(BANDS[bn]);
+      }
+      if (A.forcedRun && B.forcedRun && disjoint(A.forcedRun, B.forcedRun)) dis.push("forcedRun");
+      if (!dis.length) pairsWithNoDisjointBand.push("T" + A.tier + "/T" + B.tier);
+      if (A.w === B.w && A.h === B.h) {
+        pairLines.push("T" + A.tier + "/T" + B.tier + " (same grid) disjoint on: " +
+          (dis.length ? dis.join("+") : "NOTHING"));
+      }
+    }
+  }
+  pairLines.forEach(note);
+  note("depth windows T5 " + JSON.stringify(CONTRACT[4].depth) + " and T6 " +
+    JSON.stringify(CONTRACT[5].depth) + " OVERLAP on [21,26] — so SPEC.md's " +
+    "\"two disjoint axes\" is only true of the effort axis for that pair; effort " +
+    "alone is what makes T5/T6 arithmetically impossible to confuse.");
+  check("5b-pre every pair of tiers is separated by at least one DISJOINT gated band",
+    pairsWithNoDisjointBand.length === 0,
+    (NT * (NT - 1) / 2) + " tier pairs, " + pairsWithNoDisjointBand.length +
+    " with no disjoint band" + (pairsWithNoDisjointBand.length ?
+      ": " + pairsWithNoDisjointBand.join(",") : ""));
+
   /* A board certified for tier N must not pass tier M's gate, M != N. */
   var crossPass = 0, crossTested = 0, firstCross = null;
-  var metricOnlyOverlap = 0;
+  var metricOnlyOverlap = 0, metricOnlySameGrid = 0;
   for (var a = 0; a < TIER_STATS.length; a++) {
     var sa = TIER_STATS[a];
     for (var k = 0; k < sa.keys.length; k++) {
       var b = Board.deserialize(sa.keys[k]);
       var g = Solver.grade(b);
-      for (var mI = 1; mI <= 5; mI++) {
+      for (var mI = 1; mI <= NT; mI++) {
         if (mI === sa.tier) continue;
         crossTested++;
         var spec = Generator.tierFor(mI);
@@ -816,24 +1046,36 @@ part(function () {
           crossPass++;
           if (!firstCross) firstCross = { certifiedTier: sa.tier, alsoAccepted: mI, key: sa.keys[k] };
         }
-        /* informational: would the METRICS alone (ignoring grid size) match? */
+        /* informational: would the METRICS alone (ignoring grid size) match?
+           This is the number that matters now that T5/T6/T7 share a grid —
+           for those pairs it is not "informational" at all, it IS the gate. */
         var mg = myGrade(myDecode(sa.keys[k]));
-        if (mg.arrows >= spec.arrows[0] && mg.arrows <= spec.arrows[1] &&
+        var metricFit = mg.arrows >= spec.arrows[0] && mg.arrows <= spec.arrows[1] &&
             mg.walls >= spec.walls[0] && mg.walls <= spec.walls[1] &&
             mg.depth >= spec.depth[0] && mg.depth <= spec.depth[1] &&
             mg.effort >= spec.effort[0] && mg.effort <= spec.effort[1] &&
-            mg.minRoundWidth >= spec.minRoundWidth[0] && mg.minRoundWidth <= spec.minRoundWidth[1]) {
+            mg.minRoundWidth >= spec.minRoundWidth[0] && mg.minRoundWidth <= spec.minRoundWidth[1] &&
+            (!spec.forcedRun ||
+              (mg.forcedRun >= spec.forcedRun[0] && mg.forcedRun <= spec.forcedRun[1]));
+        if (metricFit) {
           metricOnlyOverlap++;
+          if (spec.w === Board.deserialize(sa.keys[k]).w && spec.h === Board.deserialize(sa.keys[k]).h) {
+            metricOnlySameGrid++;
+          }
         }
       }
     }
   }
   note("cross-tier acceptance tests: " + crossTested + "; boards accepted by a foreign tier: " + crossPass);
-  note("(informational) foreign-tier matches if grid size is IGNORED: " + metricOnlyOverlap +
-    " — the bands touch at the tails, which is why accepts() gates the grid first");
+  note("foreign-tier matches on METRICS ALONE, grid ignored: " + metricOnlyOverlap +
+    " (of which same-grid, i.e. not saved by the grid check at all: " + metricOnlySameGrid + ")");
   if (firstCross) note("FIRST CROSS-ACCEPT: " + JSON.stringify(firstCross));
   check("5b a board certified for tier N is rejected by every other tier's gate",
     crossPass === 0, crossTested + " (board, foreign tier) pairs, " + crossPass + " accepted");
+  check("5b2 no board matches a foreign SAME-GRID tier's bands even with the grid check removed",
+    metricOnlySameGrid === 0,
+    "T5/T6/T7 all 7x9; " + metricOnlySameGrid + " same-grid metric matches (the grid gate " +
+    "cannot help these pairs, so this is the real separation test)");
 
   /* Effort must be monotone in each axis, as the spec claims. */
   var monoFail = [];
@@ -870,8 +1112,8 @@ part(function () {
   /* --- 6a same process, repeated calls ------------------------------- */
   var sameProcess = 0, sameProcessBad = 0, sameProcessDead = 0;
   function ser(r) { return r && r.board ? Board.serialize(r.board) : "DEAD"; }
-  for (var t = 1; t <= 5; t++) {
-    for (var seed = 1; seed <= 20; seed++) {
+  for (var t = 1; t <= NT; t++) {
+    for (var seed = 1; seed <= SEEDS_DETERMINISM; seed++) {
       var a = Generator.generate(seed, t);
       var b = Generator.generate(seed, t);
       sameProcess++;
@@ -890,7 +1132,7 @@ part(function () {
   var code =
     "var G=require(" + JSON.stringify(genPath) + ");" +
     "var B=require(" + JSON.stringify(boardPath) + ");" +
-    "var out=[];for(var t=1;t<=5;t++){for(var s=1;s<=20;s++){var r=G.generate(s,t);" +
+    "var out=[];for(var t=1;t<=" + NT + ";t++){for(var s=1;s<=" + SEEDS_DETERMINISM + ";s++){var r=G.generate(s,t);" +
     "out.push(r.board?B.serialize(r.board):'DEAD');}}" +
     "process.stdout.write(out.join('|'));";
   var childOut = child.execFileSync(process.execPath, ["-e", code], {
@@ -898,8 +1140,8 @@ part(function () {
   });
   var childKeys = childOut.split("|");
   var mineKeys = [];
-  for (var t2 = 1; t2 <= 5; t2++) {
-    for (var s2 = 1; s2 <= 20; s2++) {
+  for (var t2 = 1; t2 <= NT; t2++) {
+    for (var s2 = 1; s2 <= SEEDS_DETERMINISM; s2++) {
       var rr = Generator.generate(s2, t2);
       mineKeys.push(ser(rr));
     }
@@ -918,22 +1160,43 @@ part(function () {
 
   /* --- 6c variety across 300 seeds per tier --------------------------
 
-     Wall-layout variety needs the right statistic. Tier 3's wall band is
-     [0, 2], so ~1/3 of its boards carry NO wall and necessarily share the one
-     empty layout, and the ~1/3 carrying exactly one wall are drawing from
-     only ~42 possible positions — collisions there are combinatorially
-     forced, not a generator defect. What actually proves the wall budget is
-     alive is: (a) every wall count in the band occurs, and (b) among the
-     boards that DO carry walls, layouts are overwhelmingly distinct. Both are
-     asserted below, with the count distribution printed. */
-  var SEEDS = 300;
+     Wall-layout variety needs the right statistic, and "most layouts are
+     distinct" is NOT it. Tier 7's wall band is [1, 4] and its modal draw is a
+     SINGLE wall on a 63-cell grid: 184 of 300 boards carry one wall, so at
+     most 63 layouts exist for them and collisions are forced by the pigeonhole
+     principle, not by a lazy generator. Tier 3 is the same story at [0, 2].
+
+     So each wall-count bucket is compared against its own BIRTHDAY
+     EXPECTATION — the distinct count uniform random placement would produce,
+     C * (1 - (1 - 1/C)^n) with C = the number of possible layouts at that
+     wall count. A generator that always parks the wall in the same corner
+     lands far below that expectation and still fails; one that samples
+     uniformly sits on it. Measured: tier 7's 1-wall bucket gives 61 distinct
+     against an expectation of 59.7 (and all 63 cells are used at least once),
+     which is why its 176 total layouts is correct behaviour, not a defect.
+
+     Asserted per tier: (a) every wall count in the band occurs, (b) walls
+     appear in at least half the cells of the grid across the sample,
+     (c) multi-wall boards are near-all distinct, (d) every bucket reaches 60%
+     of its birthday expectation. */
+  function birthdayExpect(C, n) {
+    if (C <= 1) return 1;
+    return C * (1 - Math.pow(1 - 1 / C, n));
+  }
+  function layoutsAvailable(cells, k) {
+    var c = 1;
+    for (var j = 0; j < k; j++) c = c * (cells - j) / (j + 1);
+    return c;
+  }
+  var SEEDS = SEEDS_VARIETY;
   var varietyOk = true;
   var varietyBad = [];
-  for (var t3 = 1; t3 <= 5; t3++) {
+  for (var t3 = 1; t3 <= NT; t3++) {
     var spec = Generator.tierFor(t3);
     var keys = new Set(), masks = new Set(), wallLayouts = new Set(), dirMixes = new Set();
     var arrowLayouts = new Set(), walledLayouts = new Set();
-    var wallCounts = {};
+    var wallCounts = {}, bucketSets = {}, wallCellsUsed = new Set();
+    var multiWall = 0, multiWallSet = new Set();
     var n = 0, walled = 0;
     for (var s3 = 1; s3 <= SEEDS; s3++) {
       var r = Generator.generate(s3, t3);
@@ -948,12 +1211,15 @@ part(function () {
         mask += c === "." ? "0" : "1";
         wallStr += c === "#" ? "#" : ".";
         arrowStr += myIsArrow(c) ? "a" : ".";
-        if (c === "#") nw++;
+        if (c === "#") { nw++; wallCellsUsed.add(i2); }
         if (myIsArrow(c)) mix[c]++;
       }
       wallCounts[nw] = (wallCounts[nw] || 0) + 1;
+      if (!bucketSets[nw]) bucketSets[nw] = new Set();
+      bucketSets[nw].add(wallStr);
       masks.add(mask); wallLayouts.add(wallStr); arrowLayouts.add(arrowStr);
       if (nw > 0) { walled++; walledLayouts.add(wallStr); }
+      if (nw >= 2) { multiWall++; multiWallSet.add(wallStr); }
       dirMixes.add(mix.N + "/" + mix.E + "/" + mix.S + "/" + mix.W);
     }
     /* every wall count the tier allows must actually occur */
@@ -961,23 +1227,39 @@ part(function () {
     for (var wc = spec.walls[0]; wc <= spec.walls[1]; wc++) {
       if (!wallCounts[wc]) countsCovered = false;
     }
+    /* every bucket must reach 60% of the distinct count uniform placement
+       would give — the test a fixed-position placer fails */
+    var bucketOk = true, bucketLine = [];
+    var cellCount = spec.w * spec.h;
+    for (var bk in bucketSets) {
+      var k = Number(bk);
+      if (k === 0) continue;
+      var nk = wallCounts[k], dk = bucketSets[bk].size;
+      var ek = birthdayExpect(layoutsAvailable(cellCount, k), nk);
+      bucketLine.push(k + "w: " + dk + "/" + nk + " distinct vs " + ek.toFixed(1) + " expected");
+      if (dk < 0.6 * ek) bucketOk = false;
+    }
     var wallsPossible = spec.walls[1] > 0;
     var wallOk = wallsPossible
-      ? (countsCovered && walled > 0 && walledLayouts.size > 0.6 * walled && walledLayouts.size >= 50)
-      : (countsCovered && wallLayouts.size === 1 && walled === 0);
+      ? (countsCovered && walled > 0 && bucketOk &&
+         wallCellsUsed.size >= 0.5 * cellCount &&
+         (multiWall === 0 || multiWallSet.size >= 0.85 * multiWall))
+      : (countsCovered && wallLayouts.size === 1 && walled === 0 && wallCellsUsed.size === 0);
     var lineOk = n === SEEDS && keys.size === n && masks.size > 20 &&
       arrowLayouts.size > n * 0.8 && dirMixes.size > 20 && wallOk;
     if (!lineOk) { varietyOk = false; varietyBad.push("T" + t3); }
     note("tier " + t3 + " over " + n + " seeds: distinct boards " + keys.size +
       ", masks " + masks.size + ", arrow layouts " + arrowLayouts.size +
-      ", direction mixes " + dirMixes.size +
-      " | walls " + JSON.stringify(wallCounts) +
-      " -> " + walledLayouts.size + " distinct layouts among " + walled + " walled boards" +
-      (wallsPossible ? "" : " (tier is wall-free by spec)") +
+      ", direction mixes " + dirMixes.size);
+    note("        walls " + JSON.stringify(wallCounts) +
+      (wallsPossible
+        ? " | " + bucketLine.join("; ") + " | wall cells used " + wallCellsUsed.size +
+          "/" + cellCount + " | multi-wall layouts " + multiWallSet.size + "/" + multiWall
+        : " (tier is wall-free by spec)") +
       (lineOk ? "" : "   <-- FAILS"));
   }
-  check("6c 300 seeds per tier give distinct boards, masks, arrow layouts, wall layouts and direction mixes",
-    varietyOk, varietyBad.length ? "tiers failing variety: " + varietyBad.join(",") : "all five tiers varied on every axis");
+  check("6c " + SEEDS_VARIETY + " seeds per tier give distinct boards, masks, arrow layouts, wall layouts and direction mixes",
+    varietyOk, varietyBad.length ? "tiers failing variety: " + varietyBad.join(",") : "all " + NT + " tiers varied on every axis");
 });
 
 /* =====================================================================
@@ -989,8 +1271,8 @@ part(function () {
   var rand = myRng("flightpath|verify|hint|v1");
   var boards = [];
   for (var s = 0; s < 600; s++) boards.push(randomModel(rand));
-  for (var t = 1; t <= 5; t++) {
-    for (var seed = 1; seed <= 20; seed++) {
+  for (var t = 1; t <= NT; t++) {
+    for (var seed = 1; seed <= SEEDS_HINT; seed++) {
       var r = Generator.generate(seed, t);
       if (r.board) boards.push(fromBoard(r.board));
     }
@@ -1050,8 +1332,8 @@ part(function () {
   var firstBad = null;
   var models = [];
   for (var s = 0; s < 500; s++) models.push(randomModel(rand));
-  for (var t = 1; t <= 5; t++) {
-    for (var seed = 1; seed <= 30; seed++) {
+  for (var t = 1; t <= NT; t++) {
+    for (var seed = 1; seed <= SEEDS_SERIAL; seed++) {
       var r = Generator.generate(seed, t);
       if (r.board) models.push(fromBoard(r.board));
     }
@@ -1201,11 +1483,200 @@ part(function () {
 });
 
 /* =====================================================================
+   CHECK 10 — THE forcedRun GATE (new in tiers 6 and 7)
+   ===================================================================== */
+section("10. forcedRun — the new opt-in band");
+
+part(function () {
+  var rand = myRng("flightpath|verify|forcedrun|v1");
+
+  /* ---- 10a my forcedRun vs the shipped one, on boards with known widths.
+     Hand-built round-width sequences first, so the reference values are
+     arithmetic rather than another program's output. */
+  var UNIT = [
+    { widths: [], want: 0 },
+    { widths: [3], want: 0 },
+    { widths: [1], want: 1 },
+    { widths: [1, 1, 1, 1], want: 4 },
+    { widths: [2, 1, 1, 3, 1], want: 2 },
+    { widths: [1, 2, 1, 1, 1, 2, 1], want: 3 },
+    { widths: [5, 4, 3], want: 0 },
+    { widths: [1, 1, 5, 1, 1, 1], want: 3 },
+    { widths: [1, 1, 1, 2], want: 3 }
+  ];
+  var unitBad = [];
+  for (var u = 0; u < UNIT.length; u++) {
+    var mineU = myForcedRun(UNIT[u].widths);
+    var theirsU = Generator.longestForcedRun({ roundWidths: UNIT[u].widths });
+    if (mineU !== UNIT[u].want || theirsU !== UNIT[u].want) {
+      unitBad.push(JSON.stringify(UNIT[u].widths) + " want " + UNIT[u].want +
+        " mine " + mineU + " shipped " + theirsU);
+    }
+  }
+  note("hand-computed width sequences: " + UNIT.length +
+    " (incl. empty, no-ones, all-ones, run broken at the end, two runs of different length)");
+  if (unitBad.length) note("UNIT FAILURES: " + JSON.stringify(unitBad));
+  check("10a forcedRun is correct on hand-computed round-width sequences",
+    unitBad.length === 0, UNIT.length + " sequences, " + unitBad.length + " wrong");
+
+  /* ---- 10b on real boards: my closure's widths -> my forcedRun, against the
+     shipped one fed by the shipped grade. Two independent paths end to end. */
+  var boards = [];
+  for (var s = 0; s < 600; s++) boards.push(randomModel(rand, { arrowP: 0.45 + 0.4 * rand() }));
+  for (var t = 1; t <= NT; t++) {
+    for (var seed = 1; seed <= 10; seed++) {
+      var r = Generator.generate(seed, t);
+      if (r.board) boards.push(fromBoard(r.board));
+    }
+  }
+  var frBad = 0, frCompared = 0, nonZero = 0, maxSeen = 0, firstFr = null;
+  for (var bi = 0; bi < boards.length; bi++) {
+    var m = boards[bi];
+    var mineG = myGrade(m);
+    var theirG = Solver.grade(toBoard(m));
+    var theirRun = Generator.longestForcedRun(theirG);
+    frCompared++;
+    if (mineG.forcedRun !== theirRun) {
+      frBad++;
+      if (!firstFr) {
+        firstFr = { key: myEncode(m), mine: mineG.forcedRun, shipped: theirRun,
+          myWidths: mineG.roundWidths, theirWidths: theirG.roundWidths };
+      }
+    }
+    if (mineG.forcedRun > 0) nonZero++;
+    if (mineG.forcedRun > maxSeen) maxSeen = mineG.forcedRun;
+  }
+  note("boards compared: " + frCompared + " (600 random + " + (NT * 10) +
+    " generated); nonzero forcedRun on " + nonZero + " of them, longest run seen " + maxSeen);
+  if (firstFr) note("FIRST forcedRun DISAGREEMENT: " + JSON.stringify(firstFr));
+  check("10b my forcedRun equals the shipped one on every board",
+    frBad === 0, frCompared + " boards, " + frBad + " disagreements");
+
+  /* ---- 10c the gate is NON-VACUOUS: drive accepts() through a synthetic
+     spec that gates ONLY forcedRun, and confirm it accepts exactly when my
+     independently computed run is in band. If the shipped gate were dropped,
+     this goes red because rejections stop happening. */
+  var wide = { arrows: [0, 999], walls: [0, 999], depth: [0, 999],
+    minRoundWidth: [1, 999], effort: [0, 99999] };
+  var gateTested = 0, gateWrong = 0, gateAccepts = 0, gateRejects = 0;
+  for (var q = 0; q < boards.length; q++) {
+    var mq = boards[q];
+    var bq = toBoard(mq);
+    var gq = Solver.grade(bq);
+    if (!gq.solved) continue;
+    var myRun = myGrade(mq).forcedRun;
+    for (var k = 0; k <= 4; k++) {
+      var spec = {
+        w: mq.w, h: mq.h, arrows: wide.arrows, walls: wide.walls, depth: wide.depth,
+        minRoundWidth: wide.minRoundWidth, effort: wide.effort, forcedRun: [k, k]
+      };
+      var got = Generator.accepts(spec, bq, gq).ok;
+      var want = myRun === k;
+      gateTested++;
+      if (got) gateAccepts++; else gateRejects++;
+      if (got !== want) gateWrong++;
+    }
+  }
+  note("synthetic forcedRun gate probes: " + gateTested + " (accepted " + gateAccepts +
+    ", rejected " + gateRejects + ") — both outcomes occur, so the gate is not vacuous");
+  check("10c accepts() honours forcedRun exactly when my own value is in band",
+    gateWrong === 0 && gateAccepts > 0 && gateRejects > 0,
+    gateWrong + " wrong verdicts of " + gateTested);
+
+  /* ---- 10d tiers 1-5 are provably UNGATED on forcedRun. Compare accepts()
+     against my own re-implementation of accepts WITHOUT the forcedRun branch,
+     over raw candidates (accepted and rejected alike), and count how many of
+     those boards WOULD have been rejected if a tier-6 style band applied —
+     which is what makes the comparison meaningful rather than trivially true. */
+  function acceptsNoForcedRun(spec, board, g) {
+    if (board.w !== spec.w || board.h !== spec.h) return false;
+    if (!g.solved || g.stuckCount !== 0) return false;
+    function inb(v, b) { return v >= b[0] && v <= b[1]; }
+    return inb(g.arrows, spec.arrows) && inb(g.walls, spec.walls) &&
+      inb(g.depth, spec.depth) && inb(g.minRoundWidth, spec.minRoundWidth) &&
+      inb(g.effort, spec.effort);
+  }
+  var candTested = 0, candDiff = 0, wouldFailT6Band = 0, acceptedRaw = 0;
+  for (var t5 = 1; t5 <= 5; t5++) {
+    var spec5 = Generator.tierFor(t5);
+    for (var a5 = 0; a5 < 300; a5++) {
+      var rng5 = require(path.join(JS, "rng.js"))
+        .makeRng(Generator.attemptSeed(9000 + a5, t5, a5));
+      var cand = Generator.buildCandidate(spec5, rng5);
+      if (!cand) continue;
+      var g5 = Solver.grade(cand.board);
+      var shipped = Generator.accepts(spec5, cand.board, g5).ok;
+      var mineNo = acceptsNoForcedRun(spec5, cand.board, g5);
+      candTested++;
+      if (shipped) acceptedRaw++;
+      if (shipped !== mineNo) candDiff++;
+      var run5 = myGrade(myDecode(Board.serialize(cand.board))).forcedRun;
+      if (run5 < 10) wouldFailT6Band++;
+    }
+  }
+  note("tier 1-5 raw candidates graded: " + candTested + " (" + acceptedRaw +
+    " accepted); " + wouldFailT6Band + " of them have forcedRun < 10, i.e. would " +
+    "be REJECTED if tier 6's band applied — so 'identical verdicts' is a real result");
+  check("10d tiers 1-5 verdicts are identical with the forcedRun branch removed",
+    candDiff === 0, candTested + " candidates, " + candDiff + " verdict differences");
+
+  /* ---- 10e the forcedRun distributions actually rise with tier, as SPEC.md
+     claims (medians T5 10 / T6 17 / T7 25). Report measured values. */
+  var runLine = [], runsOrdered = true;
+  for (var ti = 0; ti < TIER_STATS.length; ti++) {
+    var st = TIER_STATS[ti];
+    runLine.push("T" + st.tier + " median " + median(st.runs) + " (" + mn(st.runs) + "-" + mx(st.runs) + ")");
+  }
+  runLine.forEach(function (x) { note("forcedRun " + x); });
+  var m5 = median(TIER_STATS[4].runs), m6 = median(TIER_STATS[5].runs), m7 = median(TIER_STATS[6].runs);
+  if (!(m6 > m5 && m7 > m6)) runsOrdered = false;
+  check("10e forcedRun medians rise strictly across the top three tiers",
+    runsOrdered, "T5 " + m5 + " < T6 " + m6 + " < T7 " + m7);
+
+  /* ---- 10f is the SHIPPED gate load-bearing, or is it implied by the bands
+     that already ran? "A new check that cannot fail is not a check" applies to
+     the gate itself, not only to my tests. Measured from the generator's own
+     rejection counters over the tier-6/7 candidate stream in check 4. */
+  var inertLines = [], measured = 0, frRejTotal = 0;
+  for (var ni = 0; ni < NEW_TIERS.length; ni++) {
+    var st6 = TIER_STATS[NEW_TIERS[ni] - 1];
+    var rj = st6.rejects || {};
+    var frRej = rj.forcedRun || 0;
+    frRejTotal += frRej;
+    var totRej = 0;
+    for (var rkk in rj) totRej += rj[rkk];
+    measured += st6.candidates;
+    inertLines.push("T" + st6.tier + ": " + st6.candidates + " candidates, " + totRej +
+      " rejected (depth " + (rj.depth || 0) + ", effort " + (rj.effort || 0) +
+      ", build " + (rj.build || 0) + "), forcedRun rejected " + frRej);
+  }
+  inertLines.forEach(note);
+  note((frRejTotal === 0 ? "FINDING (not a defect, but do not call this gate " +
+    "load-bearing): " : "the ") + "forcedRun " +
+    "band rejected " + frRejTotal + " of " + measured + " candidates. Every candidate that already " +
+    "cleared depth+effort also satisfied it, so removing the gate would change no " +
+    "shipped board — mutant M1 confirmed exactly that. forcedRun is a real, correctly " +
+    "computed DESCRIPTIVE metric (medians " + m5 + "/" + m6 + "/" + m7 +
+    "), not an active filter on this sampler.");
+  note("forcedRun also does NOT separate T6 from T7 by itself: observed T6 " +
+    mn(TIER_STATS[5].runs) + "-" + mx(TIER_STATS[5].runs) + " overlaps T7 " +
+    mn(TIER_STATS[6].runs) + "-" + mx(TIER_STATS[6].runs) +
+    ", and the declared bands [10,99] and [16,99] overlap by construction. " +
+    "Separation is carried by effort, as check 5b-pre shows.");
+  check("10f the forcedRun band's marginal contribution is measured, not assumed",
+    measured > 1000,
+    measured + " tier-6/7 candidates observed; forcedRun rejections: " + frRejTotal +
+    (frRejTotal === 0 ? " (gate currently INERT — implied by depth+effort)" : " (gate is active)"));
+});
+
+/* =====================================================================
    VERDICT
    ===================================================================== */
 section("VERDICT");
 
 var passed = results.filter(function (r) { return r.ok; }).length;
+console.log("tiers audited: 1.." + NT + " (no tier skipped)   wall clock: " +
+  ((Date.now() - T_START) / 1000).toFixed(1) + "s");
 console.log("checks run: " + results.length + "   passed: " + passed + "   failed: " + failures.length);
 if (failures.length) {
   console.log("");

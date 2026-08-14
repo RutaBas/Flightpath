@@ -141,17 +141,35 @@ var UI = (function (root) {
     var rows = home.tiers.map(function (t, i) {
       var def = Meta.tierByKey(t.key);
       var map = Meta.progress.mapFor(t.key);
-      var done = 0;
-      for (var k = 0; k < map.length; k++) if (map[k].played) done++;
+      var done = 0, stars = 0;
+      for (var k = 0; k < map.length; k++) {
+        if (map[k].played) done++;
+        stars += map[k].stars || 0;
+      }
+      var maxStars = t.levels * 3;
       var cur = t.unlocked && !resumable && t.key === target.tierKey;
       var gate = t.gate && t.gate.length ? t.gate[0] : null;
+
+      /* Each row carries its own progress — a bar plus a star tally — so the
+         row height is paying for information rather than padding. A LOCKED tier
+         shows how far along its unlock requirement is, which makes the gate read
+         as something you are progressing toward rather than a closed door. */
+      var pct = t.unlocked
+        ? (t.levels ? (done / t.levels) * 100 : 0)
+        : (gate && gate.need ? Math.min(100, (gate.have / gate.need) * 100) : 0);
+      var tally = t.unlocked
+        ? "★ <b>" + stars + "</b>/" + maxStars
+        : (gate ? gate.have + "/" + gate.need + " cleared to open" : "locked");
+
       return '<button class="tier' + (cur ? " cur" : "") + (t.unlocked ? "" : " locked") +
         '" type="button" data-tier="' + t.key + '">' +
-        '<span class="num mono">0' + (i + 1) + "</span>" +
-        '<span class="nm">' + t.name +
-          '<span class="sub"> · ' + def.grid +
-          (t.unlocked ? "" : " · " + gate.have + "/" + gate.need + " cleared") + "</span></span>" +
+        '<span class="num mono">' + (i + 1 < 10 ? "0" : "") + (i + 1) + "</span>" +
+        '<span class="nm">' + t.name + '<span class="sub"> · ' + def.grid + "</span></span>" +
         '<span class="pr">' + (t.unlocked ? done + "/" + t.levels : Art.lock()) + "</span>" +
+        '<span class="meter">' +
+          '<span class="bar"><i style="width:' + pct.toFixed(1) + '%"></i></span>' +
+          '<span class="tally mono">' + tally + "</span>" +
+        "</span>" +
         "</button>";
     }).join("");
 
@@ -168,17 +186,20 @@ var UI = (function (root) {
       /* The layer distributes its slack into the ladder — see .tiers in
          css/style.css. `scroll` is insurance for a short viewport. */
       '<div class="layer scroll">' +
-        '<div style="height:14px;flex:0 0 auto"></div>' +
+        /* Spacers are classed, not inline-styled, so a short viewport can trim
+           them in CSS — see the max-height:700px block in css/style.css. With
+           seven tiers the ladder needs every pixel on an SE. */
+        '<div class="hgap hgap-a"></div>' +
         '<div class="plate">' +
           '<p class="word">FLIGHTPATH</p>' +
           '<div class="rule"></div>' +
           '<p class="kicker">AERO TEST SECTION<span class="lamp"></span>No. ' +
             (home.clearedCount + 1) + "</p>" +
         "</div>" +
-        '<div style="height:20px;flex:0 0 auto"></div>' +
+        '<div class="hgap hgap-b"></div>' +
         '<button class="cta" id="btn-play" type="button">' + ctaLabel +
           "<small>" + ctaSub + "</small></button>" +
-        '<div style="height:16px;flex:0 0 auto"></div>' +
+        '<div class="hgap hgap-c"></div>' +
         '<div class="tiers">' + rows + "</div>" +
         '<div class="homefoot">' +
           '<button class="ghost" id="btn-daily" type="button">Daily ' +
