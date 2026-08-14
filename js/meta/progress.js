@@ -27,6 +27,9 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
 
   var VERSION = 1;
+  /* Bump to force the per-tier aggregate counters to be recomputed from the
+     levels map. They are derived data, so rebuilding them is always safe. */
+  var AGG_VERSION = 1;
 
   function defaultStars(res, par) {
     var clean = !res.hints && !res.mistakes;
@@ -94,6 +97,32 @@
               : { stars: 0, bestMs: 0, plays: 0 };
   };
 
+  /* Per-tier aggregates: how many levels cleared, how many stars earned.
+
+     A home screen wants seven pairs of numbers, not every level. Building the
+     whole map to count it is fine at 40 levels a tier and absurd at 500 — it
+     allocates one object per level on every render. So the counters are kept
+     incrementally in the tier state and updated in recordWin().
+
+     Backfilled once for anyone whose save predates them, from the levels map
+     they already have, and then persisted — so the O(played) walk happens at
+     most once per tier per install, not once per paint. */
+  Progress.prototype.tierTotals = function (tierKey) {
+    var t = this.tierState(tierKey);
+    if (!t.agg || t.agg.v !== AGG_VERSION) {
+      var cleared = 0, stars = 0;
+      for (var k in t.levels) {
+        if (!Object.prototype.hasOwnProperty.call(t.levels, k)) continue;
+        var lv = t.levels[k];
+        if (lv && lv.plays) cleared++;
+        if (lv && lv.stars) stars += lv.stars;
+      }
+      t.agg = { v: AGG_VERSION, cleared: cleared, stars: stars };
+      this.save();
+    }
+    return { cleared: t.agg.cleared, stars: t.agg.stars };
+  };
+
   Progress.prototype.isUnlocked = function (tierKey, n) {
     if (!this.isTierUnlocked(tierKey)) return false;
     return n <= this.tierState(tierKey).unlocked;
@@ -139,6 +168,11 @@
     var def = this.tierDef(tierKey);
     var maxLevel = def && def.levels ? def.levels : n;
 
+    /* Force the aggregates to exist BEFORE this level is written. Backfilling
+       afterwards would count the new result once in the walk and once again in
+       the delta below. */
+    this.tierTotals(tierKey);
+
     var prev = t.levels[n] || { stars: 0, bestMs: 0, plays: 0 };
     var firstClear = !prev.plays;
 
@@ -165,6 +199,11 @@
     this.state.totalStars += Math.max(0, t.levels[n].stars - prevStars);
     this.state.solvedCount += 1;
     if (firstClear) this.state.clearedCount += 1;
+
+    /* Keep the per-tier aggregates in step with the same deltas, so
+       tierTotals() never has to walk the levels map again. */
+    t.agg.stars += Math.max(0, t.levels[n].stars - prevStars);
+    if (firstClear) t.agg.cleared += 1;
 
     var unlockedNext = false;
     if (n + 1 <= maxLevel && t.unlocked < n + 1) {
@@ -204,13 +243,22 @@
   };
 
   /* Snapshot for a level-map screen. */
-  Progress.prototype.mapFor = function (tierKey) {
+  /* Snapshot for a level-map screen.
+
+     mapFor(key)            every level in the tier — fine at 40, wasteful at 500
+     mapFor(key, from, len) one page of it, which is what a chunked map wants.
+     The range form exists so a 500-level ladder never has to allocate 500
+     objects to draw 50 tiles. Omitting the range keeps the original behaviour,
+     so existing callers are unaffected. */
+  Progress.prototype.mapFor = function (tierKey, from, len) {
     var def = this.tierDef(tierKey);
     var count = def && def.levels ? def.levels : 0;
     var t = this.tierState(tierKey);
     var open = this.isTierUnlocked(tierKey);
     var rows = [];
-    for (var n = 1; n <= count; n++) {
+    var first = from ? Math.max(1, from | 0) : 1;
+    var last = len ? Math.min(count, first + (len | 0) - 1) : count;
+    for (var n = first; n <= last; n++) {
       var lv = t.levels[n];
       rows.push({
         level: n,

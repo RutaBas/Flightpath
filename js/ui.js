@@ -140,12 +140,13 @@ var UI = (function (root) {
 
     var rows = home.tiers.map(function (t, i) {
       var def = Meta.tierByKey(t.key);
-      var map = Meta.progress.mapFor(t.key);
-      var done = 0, stars = 0;
-      for (var k = 0; k < map.length; k++) {
-        if (map[k].played) done++;
-        stars += map[k].stars || 0;
-      }
+      /* O(1) per tier. This used to build the tier's whole level map and count
+         it — one object per level, on every home render. At 500 levels a tier
+         that is 3,500 allocations to produce seven pairs of numbers, on a paint
+         that happens on every back-out and every resize. The counters are kept
+         incrementally by the library (progress.tierTotals). */
+      var agg = Meta.progress.tierTotals(t.key);
+      var done = agg.cleared, stars = agg.stars;
       var maxStars = t.levels * 3;
       var cur = t.unlocked && !resumable && t.key === target.tierKey;
       var gate = t.gate && t.gate.length ? t.gate[0] : null;
@@ -633,9 +634,7 @@ var UI = (function (root) {
       nextSub = "DAILY · " + st.dateKey;
       nextFn = function () { MetaUI.openCalendar(); };
     } else {
-      var map = Meta.progress.mapFor(st.tierKey);
-      var done = 0;
-      for (var i = 0; i < map.length; i++) if (map[i].played) done++;
+      var done = Meta.progress.tierTotals(st.tierKey).cleared;
       var pct = Math.round((done / def.levels) * 100);
       tail =
         row(def.name.toUpperCase() + " PROGRESS", done + " / " + def.levels, "") +

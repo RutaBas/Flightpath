@@ -54,6 +54,7 @@ for (const spec of TIERS) {
   const band = Generator.tierFor(spec.tier);
   const efforts = [];
   const runs = [];
+  const pars = [];
   let worstAttempts = 0;
 
   for (let n = 1; n <= FPLevels.LEVELS_PER_TIER; n++) {
@@ -94,11 +95,18 @@ for (const spec of TIERS) {
     check(res.board.w === band.w && res.board.h === band.h,
       where + ": grid " + res.board.w + "x" + res.board.h + " != " + band.w + "x" + band.h);
 
+    /* The packed effort decodes back to what the solver measures now. This is
+       the check that catches a mis-packed delta chain: an error anywhere in the
+       string shifts every level after it. */
     check(Math.abs(g.effort - entry.effort) < 0.06,
-      where + ": baked effort " + entry.effort + " != measured " + g.effort);
-    check(entry.par === FPPar.parMs(spec.key, g),
-      where + ": baked par " + entry.par + " != " + FPPar.parMs(spec.key, g));
-    check(entry.par > 0 && entry.par < 15 * 60000, where + ": par out of range");
+      where + ": packed effort " + entry.effort + " != measured " + g.effort);
+
+    /* Par is no longer stored per level — it is computed from this grade, so
+       what is verified is that the live computation gives a sane, forgiving
+       number for the board that was actually built. */
+    const par = FPPar.parForGrade(spec.key, g);
+    check(par > 0 && par < 15 * 60000, where + ": par " + par + " out of range");
+    pars.push(par);
 
     const key = Board.key(res.board);
     if (boards.has(key)) check(false, where + ": IDENTICAL board to " + boards.get(key));
@@ -113,15 +121,17 @@ for (const spec of TIERS) {
   check(dips === 0, spec.key + ": effort dips " + dips + " times inside the tier");
 
   ramp[spec.key] = efforts;
+  const at = (n) => efforts[n - 1].toFixed(1).padStart(6);
+  const distinct = new Set(efforts.map((e) => Math.round(e * 10))).size;
   console.log(
     (spec.key + " (t" + spec.tier + ")").padEnd(16) +
-    " L1 " + efforts[0].toFixed(1).padStart(6) +
-    "   L20 " + efforts[19].toFixed(1).padStart(6) +
-    "   L40 " + efforts[39].toFixed(1).padStart(6) +
-    "   band " + band.effort[0] + "-" + band.effort[1] +
-    "   par " + FPPar.fmt(FPLevels.parFor(spec.key, 1)) + " → " + FPPar.fmt(FPLevels.parFor(spec.key, 40)) +
-    "   worst rebuild " + String(worstAttempts).padStart(4) + " att" +
-    (runs.length ? "   forced run " + Math.min.apply(null, runs) + "-" + Math.max.apply(null, runs) : "")
+    " L1" + at(1) + "  L100" + at(100) + "  L250" + at(250) +
+    "  L400" + at(400) + "  L500" + at(500) +
+    "  band " + band.effort[0] + "-" + band.effort[1] +
+    "  distinct " + String(distinct).padStart(3) +
+    "  par " + FPPar.fmt(Math.min.apply(null, pars)) + "-" + FPPar.fmt(Math.max.apply(null, pars)) +
+    "  worst " + String(worstAttempts).padStart(4) + " att" +
+    (runs.length ? "  run " + Math.min.apply(null, runs) + "-" + Math.max.apply(null, runs) : "")
   );
 }
 

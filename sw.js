@@ -23,12 +23,18 @@
                                 home CSS all changed. Tiers 1-5 are byte-for-byte
                                 the same rows, but the FILE changed, so every
                                 installed player must be served the new one
+     flightpath-v5  2026-08-13  campaign scaled to 7 x 500 = 3,500 levels.
+                                js/levels.js re-baked and re-encoded (packed
+                                base36, 8.9KB -> 22.1KB for 12.5x the levels),
+                                meta-config gates rescaled, meta-ui level map
+                                chunked, js/meta/progress.js re-vendored with
+                                aggregate counters
 
    Anything missing from PRECACHE 404s OFFLINE ONLY — which passes every test
    run at a desk. Install to the home screen and switch on airplane mode before
    calling this done. */
 
-var CACHE_VERSION = "flightpath-v4";
+var CACHE_VERSION = "flightpath-v5";
 
 /* index.html, walked top to bottom. Google Fonts is deliberately absent: it is
    cross-origin, is never intercepted below, and the stack falls back to

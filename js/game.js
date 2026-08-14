@@ -90,15 +90,18 @@ var FPGame = (function (root) {
      price a board the same way. */
   function createLevel(tierKey, level, opts) {
     opts = opts || {};
-    var entry = FPLevels.entry(tierKey, level);
-    if (!entry) return null;
+    var seed = FPLevels.seedFor(tierKey, level);
+    if (!seed) return null;
     var tierIndex = Meta.tierIndex(tierKey);
-    var res = build(entry.seed, tierIndex);
+    var res = build(seed, tierIndex);
     if (!res.board) return null;
     return newState({
       mode: "level", tierKey: tierKey, tierIndex: tierIndex, level: level,
-      seed: entry.seed, board: res.board, grade: res.grade,
-      par: entry.par, armHint: opts.armHint
+      seed: seed, board: res.board, grade: res.grade,
+      /* Par is computed from the board that was actually built, exactly as the
+         daily does — the table stores no per-level par, and nothing here has to
+         trust an approximation. Same function, same grade, same answer. */
+      par: FPPar.parForGrade(tierKey, res.grade), armHint: opts.armHint
     });
   }
 

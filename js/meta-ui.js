@@ -45,32 +45,62 @@ var MetaUI = (function () {
   }
 
   /* ----------------------------------------------------------- level map --
-     Numbered tiles, star pips, lock state — and a locked TIER shown as
-     progress, never as a wall: the gate row says how many more clears it
-     wants and draws the bar, so a locked tier reads as a target. */
+
+     500 LEVELS A TIER, RENDERED 50 AT A TIME. Numbered tiles, star pips, lock
+     state — and a locked TIER shown as progress, never as a wall: the gate card
+     says how many more clears it wants and draws the bar, so a locked tier
+     reads as a target.
+
+     The chunking is not decoration. 500 <button>s per tier is ~2,500 DOM nodes
+     built on a screen the player opens constantly, and every one of them is
+     thrown away on the next open. Ten section headers plus one expanded section
+     is ~300 nodes and the same information. The section holding the next
+     playable level is the one open by default, so the common case — "where was
+     I" — needs no taps at all.
+
+     Scroll position is preserved across a section change, because re-rendering
+     the panel and dropping the player back at the top of a 500-level ladder is
+     its own small hostility. */
+  var SECTION = 50;
+  var openSection = {};    // tierKey -> section index currently expanded
+
+  function sectionOf(level) { return Math.floor((level - 1) / SECTION); }
+
   function levelMap(tierKey) {
     var def = Meta.tierByKey(tierKey);
-    var rows = Meta.progress.mapFor(tierKey);
     var open = Meta.progress.isTierUnlocked(tierKey);
     var gate = Meta.progress.tierGate(tierKey);
     var recs = Meta.records.get(tierKey);
 
-    var got = 0, stars = 0;
-    rows.forEach(function (r) { if (r.played) got++; stars += r.stars; });
+    /* Aggregates, not a 500-object map. */
+    var agg = Meta.progress.tierTotals(tierKey);
+    var got = agg.cleared, stars = agg.stars;
+
+    var sections = Math.ceil(def.levels / SECTION);
+    var current = openSection[tierKey];
+    if (current === undefined) current = sectionOf(Meta.progress.nextLevel(tierKey));
+    if (current < 0) current = 0;
+    if (current > sections - 1) current = sections - 1;
+    openSection[tierKey] = current;
 
     var gateHTML = "";
     if (!open && gate && gate.length) {
       var g = gate[0];
-      var pct = Math.min(100, Math.round((g.have / g.need) * 100));
+      var gpct = Math.min(100, Math.round((g.have / g.need) * 100));
       gateHTML =
         '<div class="gatecard">' +
           '<div class="row"><span class="k">' + def.name.toUpperCase() + " OPENS AT " + g.need +
             ' CLEARED</span><span class="v warn">' + g.have + " / " + g.need + "</span></div>" +
-          '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
+          '<div class="bar"><i style="width:' + gpct + '%"></i></div>' +
           '<p class="dim mono" style="margin:8px 0 0;font-size:9.5px;letter-spacing:.1em">' +
             (g.need - g.have) + " MORE LEVELS ANYWHERE ON THE LADDER</p>" +
         "</div>";
     }
+
+    /* Only the expanded section is materialised — mapFor's range form, so the
+       library allocates 50 rows rather than 500. */
+    var first = current * SECTION + 1;
+    var rows = Meta.progress.mapFor(tierKey, first, SECTION);
 
     var tiles = rows.map(function (r) {
       var cls = "lvl";
@@ -78,16 +108,35 @@ var MetaUI = (function () {
       if (r.played) cls += " done";
       if (r.stars === 3) cls += " perfect";
       return '<button class="' + cls + '" type="button" data-level="' + r.level +
-        '" ' + (r.unlocked ? "" : "disabled") + '>' +
+        '" ' + (r.unlocked ? "" : "disabled") + ">" +
         '<span class="n mono">' + r.level + "</span>" +
         (r.unlocked ? pips(r.stars) : '<span class="lk">' + Art.lock() + "</span>") +
         "</button>";
     }).join("");
 
+    /* Section headers carry their own progress so a collapsed section is still
+       informative — you can see where you stopped without opening it. */
+    var bars = "";
+    for (var sIdx = 0; sIdx < sections; sIdx++) {
+      var lo = sIdx * SECTION + 1;
+      var hi = Math.min(def.levels, lo + SECTION - 1);
+      var done = 0;
+      var srows = Meta.progress.mapFor(tierKey, lo, hi - lo + 1);
+      for (var q = 0; q < srows.length; q++) if (srows[q].played) done++;
+      var spct = Math.round((done / (hi - lo + 1)) * 100);
+      bars +=
+        '<button class="sect' + (sIdx === current ? " on" : "") + '" type="button" data-sect="' + sIdx + '">' +
+          '<span class="rng mono">' + lo + "–" + hi + "</span>" +
+          '<span class="bar"><i style="width:' + spct + '%"></i></span>' +
+          '<span class="cnt mono">' + done + "</span>" +
+        "</button>" +
+        (sIdx === current ? '<div class="lvlgrid">' + tiles + "</div>" : "");
+    }
+
     return {
       html:
         Art.plainBG() +
-        '<div class="layer scroll">' +
+        '<div class="layer scroll" id="map-scroll">' +
           header(def.name.toUpperCase(), "LEVEL MAP · " + def.grid) +
           '<div class="stats" style="margin-bottom:var(--s3)">' +
             '<div class="row"><span class="k">CLEARED</span><span class="v">' + got + " / " + def.levels + "</span></div>" +
@@ -96,7 +145,7 @@ var MetaUI = (function () {
             '<div class="row"><span class="k">BEST TIME</span><span class="v">' + fmt(recs.bestMs) + "</span></div>" +
           "</div>" +
           gateHTML +
-          '<div class="lvlgrid">' + tiles + "</div>" +
+          '<div class="sections">' + bars + "</div>" +
           '<div style="height:12px"></div>' +
         "</div>",
       bind: function (host) {
@@ -105,6 +154,19 @@ var MetaUI = (function () {
             var n = parseInt(b.getAttribute("data-level"), 10);
             if (!Meta.progress.isUnlocked(tierKey, n)) return;
             ctx.startLevel(tierKey, n);
+          });
+        });
+        host.querySelectorAll("[data-sect]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var next = parseInt(b.getAttribute("data-sect"), 10);
+            var scroller = host.querySelector("#map-scroll");
+            var keep = scroller ? scroller.scrollTop : 0;
+            openSection[tierKey] = next;
+            var again = openLevelMap(tierKey);
+            var s2 = again.querySelector("#map-scroll");
+            /* Keep the eye where it was. Collapsing a section above shortens
+               the page, so clamp rather than restore blindly. */
+            if (s2) s2.scrollTop = Math.min(keep, Math.max(0, s2.scrollHeight - s2.clientHeight));
           });
         });
       }

@@ -8,8 +8,9 @@
    file is a config object, one star rule, and one migration.
 
    WHAT IS MOUNTED
-     · progress   the 5-tier campaign ladder, 40 levels each, with Gridlock
-                  gated behind 100 cleared levels
+     · progress   the campaign ladder — 7 tiers x 500 levels, three of them
+                  gated on cumulative clears. Sizes and gates are config, not
+                  constants; see LADDER below.
      · daily      one board per UTC day, streak, freezes, replay calendar
      · records    per-tier best / average / improvement trend
      · rank       the local rank badge, from par-relative curves
@@ -45,17 +46,21 @@ var Meta = (function () {
      tier is one row here plus one row in scripts/build-levels.js.
 
      THE GATES. Cumulative clears across the whole ladder, not per tier, so a
-     player who bounces between tiers still makes progress toward the top:
-     Gridlock at 100 (two and a half tiers), Ground Stop at 150, Airspace
-     Closed at 200. */
+     player who bounces between tiers still makes progress toward the top. The
+     numbers live on the three rows below and nowhere else. */
   var LADDER = [
     { key: "clear", name: "Clear Skies" },
     { key: "light", name: "Light Traffic" },
     { key: "holding", name: "Holding" },
     { key: "stacked", name: "Stacked" },
-    { key: "gridlock", name: "Gridlock", requires: { cleared: 100 } },
-    { key: "groundstop", name: "Ground Stop", requires: { cleared: 150 } },
-    { key: "closed", name: "Airspace Closed", requires: { cleared: 200 } }
+    /* THE GATES, one line each and nothing else reads these numbers — retune
+       them here. Scaled with the ladder: at 40 levels a tier 100/150/200 was
+       36-71% of a 280-level game; at 500 a tier the same numbers would be 7-21%
+       of 3,500 and every gate would fall open in the first tier and a half.
+       250/500/750 is half a tier, one and a half tiers, and a bit over two. */
+    { key: "gridlock", name: "Gridlock", requires: { cleared: 250 } },
+    { key: "groundstop", name: "Ground Stop", requires: { cleared: 500 } },
+    { key: "closed", name: "Airspace Closed", requires: { cleared: 750 } }
   ];
 
   var TIER_DEFS = LADDER.map(function (t) {
@@ -68,10 +73,13 @@ var Meta = (function () {
       tier: spec.tier,                       // the generator's 1-based index
       levels: FPLevels.LEVELS_PER_TIER,
       requires: t.requires,
-      /* Par is per level, straight out of the same baked row the seed came
-         from, so the ladder and the daily can never price a board differently. */
+      /* The tier's REPRESENTATIVE par — a fallback for anything that needs a
+         number before a board exists. The real par of a real board is computed
+         from its grade the moment js/game.js builds it, and js/ui.js passes
+         that exact value into recordWin, so this default is never what a
+         result is measured against. Par cannot take a star either way. */
       par: (function (key) {
-        return function (n) { return FPLevels.parFor(key, n); };
+        return function () { return FPLevels.parFor(key); };
       })(t.key)
     };
   });
@@ -89,10 +97,10 @@ var Meta = (function () {
 
   /* Rank curves, par-relative and honest about it: rank.js reports
      source:"local", because these model "fast for this tier" rather than a real
-     population. Anchored on the tier's mid-ladder par (level 20). */
+     population. Anchored on the tier's median par, baked with the table. */
   var curves = {};
   TIER_DEFS.forEach(function (t) {
-    var mid = FPLevels.parFor(t.key, 20) || 60000;
+    var mid = FPLevels.parFor(t.key) || 60000;
     curves[t.key] = [
       [Math.round(mid * 0.35), 3],
       [Math.round(mid * 0.55), 12],
@@ -141,10 +149,11 @@ var Meta = (function () {
     return d ? d.tier : 1;
   };
 
-  /* Ladder-wide totals, DERIVED — never a literal. Every "x / 280" and
-     "y / 840" on a stats screen reads these, so growing the ladder moves them
-     without anyone having to remember. A hard-coded 200 in a stats panel is
-     the classic way a new tier ships half-wired. */
+  /* Ladder-wide totals, DERIVED — never a literal. Every "x / 3500" and
+     "y / 10500" on a stats screen reads these, so growing the ladder moves
+     them without anyone having to remember. A hard-coded total in a stats
+     panel is the classic way a bigger ladder ships half-wired — this has
+     already been 200/600, then 280/840. */
   meta.totalLevels = function () { return TIER_DEFS.length * FPLevels.LEVELS_PER_TIER; };
   meta.totalStars = function () { return meta.totalLevels() * 3; };
 
@@ -155,11 +164,16 @@ var Meta = (function () {
      numbering. The library stores per-tier ladders, so the numbers have to be
      re-homed: level 47 becomes light #7.
 
-     THE 200 BELOW IS HISTORY, NOT A TOTAL. The pre-meta build shipped five
-     tiers of forty, so a legacy save can only ever name levels 1-200 and can
-     only ever land in the first five tiers. It must NOT be updated when the
-     ladder grows — raising it to 280 would start mapping numbers that build
-     never wrote. Every live total is derived from the config instead.
+     THE 200 AND THE 40 BELOW ARE HISTORY, NOT TOTALS. The pre-meta build
+     shipped five tiers of forty, so a legacy save can only ever name levels
+     1-200 and can only ever land in the first five tiers. They must NOT be
+     updated when the ladder grows — raising them would start mapping numbers
+     that build never wrote. Every live total is derived from the config.
+
+     Note that level table v2 re-laid the ramp (40 levels a tier -> 500), so a
+     carried-over star sits at the same tier and number but a different board.
+     Nothing shipped to a player before v2, so this is a theoretical case; it is
+     recorded here rather than discovered later.
 
      store.migrate() is idempotent and records its version even when the source
      data is absent, so this runs exactly once per install either way, and a

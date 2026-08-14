@@ -381,6 +381,21 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
 .metahud{margin-bottom:var(--s3)}
 
 /* --- level map --- */
+/* Section rows: ten of them per tier, each a 44px tap target with its own
+   progress bar, and only the open one carries a grid of tiles. */
+.sections{display:flex;flex-direction:column;gap:var(--s2)}
+.sect{
+  display:flex;align-items:center;gap:var(--s3);width:100%;
+  min-height:44px;padding:8px var(--s3);border-radius:10px;
+  background:rgba(36,42,46,.7);border:1px solid rgba(195,204,200,.12);
+  color:var(--ink);font-family:'Archivo',system-ui,sans-serif;cursor:pointer;
+}
+.sect.on{border-color:var(--accent);background:rgba(194,133,60,.12)}
+.sect .rng{font-size:11px;letter-spacing:.06em;min-width:72px;text-align:left}
+.sect .bar{flex:1;height:4px;border-radius:2px;margin-top:0;background:rgba(195,204,200,.16);overflow:hidden}
+.sect .bar i{display:block;height:100%;background:var(--ok)}
+.sect .cnt{font-size:10px;color:var(--dim);min-width:24px;text-align:right}
+.sect.on + .lvlgrid{margin:var(--s2) 0 var(--s3)}
 .lvlgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--s2)}
 .lvl{
   min-height:56px;border-radius:10px;padding:6px 2px 5px;
