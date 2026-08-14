@@ -134,15 +134,33 @@ Three findings from the frontier sweep that the design did not anticipate:
   and acceptance at the tier-7 band collapses from 5.55% (0–2 walls) to 0.27% (3–6). This
   is why **tier 7 has *fewer* walls than tier 5** — a measured decision, not a softening.
 - **`minRoundWidth` is useless as a discriminator up here** — it is 1 at the median from
-  tier 5 onward. What actually separates the hard tiers is the *run*: the longest streak of
-  consecutive width-1 rounds, where only one arrow on the whole board is legal. Medians:
-  T5 10, T6 17, T7 25. `accepts()` therefore gained an opt-in `forcedRun` band, absent from
-  tiers 1–5 so their behaviour is provably unchanged.
+  tier 5 onward. What actually *characterises* the hard tiers is the run: the longest streak
+  of consecutive width-1 rounds, where only one arrow on the whole board is legal. Medians:
+  T5 10, T6 17, T7 24. `accepts()` gained an opt-in `forcedRun` band, absent from tiers 1–5
+  so their behaviour is provably unchanged.
 
-Because grid size can no longer separate the top three tiers, separation is enforced on
-**two disjoint axes at once** — effort windows `[190,285] / [286,352] / [353,520]` and depth
-`[13,26] / [21,28] / [29,46]` — which makes cross-tier acceptance arithmetically impossible
-rather than merely unobserved.
+### What actually separates the tiers — measured, not assumed
+
+**Effort is the only band that separates every pair.** An earlier draft of this document
+claimed separation rested on "two disjoint axes at once", effort *and* depth. That is false
+for one pair: **T5 depth `[13,26]` and T6 `[21,28]` overlap on `[21,26]`.** Depth is disjoint
+for T5/T7 and T6/T7 only. The conclusion survives — the effort windows
+`[190,285] / [286,352] / [353,520]` are pairwise disjoint, which alone makes cross-tier
+acceptance arithmetically impossible — but the reason is one axis, not two. Verified per
+pair: 21 tier pairs, 0 without a disjoint band; 6,300 (board, foreign tier) tests, 0 accepted;
+and ignoring grid entirely, 1 metrics-only match of which 0 are same-grid.
+
+**Two gate keys are inert, and should not be described as load-bearing.** Measured from the
+generator's own rejection counters over 12,947 candidates: 11,897 rejections, of which
+**depth 10,923, build 896, effort 78** — while `arrows`, `walls`, `grid`, `unsolved`,
+`stuck`, `truth`, `minRoundWidth` and `forcedRun` each reject **exactly zero**. Every
+candidate that clears depth and effort already satisfies the rest.
+
+`forcedRun` is therefore a **contract, not a filter**: it is correctly computed (verified
+against an independent implementation over 670 boards, 0 disagreements, and driven through
+`accepts()` with a synthetic spec where it does reject) and it pins the tier's signature so
+it cannot silently disappear — but deleting it changes no board that ships. It also does not
+separate T6 from T7 on its own: observed T6 12–23 overlaps T7 19–32.
 
 Measured acceptance: tier 6 **9.43%** (worst 88 attempts of a 2000 budget), tier 7 **1.70%**
 (worst 382 of 6000). Zero dead seeds in 1000 seeds per tier.

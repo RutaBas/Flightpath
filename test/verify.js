@@ -1633,40 +1633,59 @@ part(function () {
   check("10e forcedRun medians rise strictly across the top three tiers",
     runsOrdered, "T5 " + m5 + " < T6 " + m6 + " < T7 " + m7);
 
-  /* ---- 10f is the SHIPPED gate load-bearing, or is it implied by the bands
-     that already ran? "A new check that cannot fail is not a check" applies to
-     the gate itself, not only to my tests. Measured from the generator's own
-     rejection counters over the tier-6/7 candidate stream in check 4. */
-  var inertLines = [], measured = 0, frRejTotal = 0;
-  for (var ni = 0; ni < NEW_TIERS.length; ni++) {
-    var st6 = TIER_STATS[NEW_TIERS[ni] - 1];
-    var rj = st6.rejects || {};
-    var frRej = rj.forcedRun || 0;
-    frRejTotal += frRej;
-    var totRej = 0;
-    for (var rkk in rj) totRej += rj[rkk];
-    measured += st6.candidates;
-    inertLines.push("T" + st6.tier + ": " + st6.candidates + " candidates, " + totRej +
-      " rejected (depth " + (rj.depth || 0) + ", effort " + (rj.effort || 0) +
-      ", build " + (rj.build || 0) + "), forcedRun rejected " + frRej);
+  /* ---- 10f WHICH GATES ARE LOAD-BEARING? "A new check that cannot fail is
+     not a check" applies to the shipped gates too, not only to my tests. Every
+     band in accepts() is audited by its MARGINAL rejection count, taken from
+     the generator's own counters over the candidate stream in check 4. A band
+     that rejects nothing is implied by the bands before it, and must not be
+     described as load-bearing. */
+  var bandNames = ["build", "grid", "unsolved", "stuck", "arrows", "walls",
+    "depth", "minRoundWidth", "effort", "forcedRun", "truth"];
+  var totalRej = {}, measured = 0, allRej = 0;
+  for (var ti2 = 0; ti2 < TIER_STATS.length; ti2++) {
+    var stt = TIER_STATS[ti2];
+    measured += stt.candidates;
+    for (var bn2 = 0; bn2 < bandNames.length; bn2++) {
+      var nm = bandNames[bn2];
+      totalRej[nm] = (totalRej[nm] || 0) + ((stt.rejects || {})[nm] || 0);
+      allRej += (stt.rejects || {})[nm] || 0;
+    }
   }
-  inertLines.forEach(note);
-  note((frRejTotal === 0 ? "FINDING (not a defect, but do not call this gate " +
-    "load-bearing): " : "the ") + "forcedRun " +
-    "band rejected " + frRejTotal + " of " + measured + " candidates. Every candidate that already " +
-    "cleared depth+effort also satisfied it, so removing the gate would change no " +
-    "shipped board — mutant M1 confirmed exactly that. forcedRun is a real, correctly " +
-    "computed DESCRIPTIVE metric (medians " + m5 + "/" + m6 + "/" + m7 +
-    "), not an active filter on this sampler.");
+  var activeB = [], inertB = [];
+  for (var bn3 = 0; bn3 < bandNames.length; bn3++) {
+    var nm3 = bandNames[bn3];
+    (totalRej[nm3] > 0 ? activeB : inertB).push(nm3 + "=" + totalRej[nm3]);
+  }
+  for (var ti3 = 0; ti3 < TIER_STATS.length; ti3++) {
+    var s3 = TIER_STATS[ti3];
+    var parts = [];
+    for (var bn4 = 0; bn4 < bandNames.length; bn4++) {
+      var v4 = (s3.rejects || {})[bandNames[bn4]] || 0;
+      if (v4) parts.push(bandNames[bn4] + " " + v4);
+    }
+    note("T" + s3.tier + ": " + s3.candidates + " candidates -> " +
+      (parts.length ? parts.join(", ") : "nothing rejected"));
+  }
+  note("ACTIVE bands (reject > 0): " + activeB.join(", "));
+  note("INERT bands (reject 0 of " + measured + " candidates): " + inertB.join(", "));
+  note("FINDING, reported not patched: forcedRun and minRoundWidth are INERT gates. " +
+    "Every candidate that cleared depth+effort already satisfied both, so deleting " +
+    "either branch changes no shipped board — mutants M1 (forcedRun gate dropped) and " +
+    "M7 (minRoundWidth gate dropped) both leave the suite green for exactly that " +
+    "reason. They are correctly computed DESCRIPTIVE metrics (forcedRun medians " +
+    m5 + "/" + m6 + "/" + m7 + "), not active filters on this sampler. " +
+    "unsolved/stuck/truth are 0 by construction: reverse building cannot emit a " +
+    "deadlock, which is what check 3 measures the value of.");
   note("forcedRun also does NOT separate T6 from T7 by itself: observed T6 " +
     mn(TIER_STATS[5].runs) + "-" + mx(TIER_STATS[5].runs) + " overlaps T7 " +
     mn(TIER_STATS[6].runs) + "-" + mx(TIER_STATS[6].runs) +
     ", and the declared bands [10,99] and [16,99] overlap by construction. " +
     "Separation is carried by effort, as check 5b-pre shows.");
-  check("10f the forcedRun band's marginal contribution is measured, not assumed",
-    measured > 1000,
-    measured + " tier-6/7 candidates observed; forcedRun rejections: " + frRejTotal +
-    (frRejTotal === 0 ? " (gate currently INERT — implied by depth+effort)" : " (gate is active)"));
+  check("10f every band's marginal contribution is measured, and the gate as a whole rejects",
+    measured > 1000 && (totalRej.depth || 0) > 0 && allRej > 0,
+    measured + " candidates, " + allRej + " rejections; depth carries " +
+    (totalRej.depth || 0) + "; inert: " +
+    inertB.map(function (x) { return x.split("=")[0]; }).join(",") || "none");
 });
 
 /* =====================================================================
