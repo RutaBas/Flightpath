@@ -81,6 +81,22 @@ var UI = (function (root) {
       ' aria-label="How to play">?</button>';
   }
 
+  /* The settings control. Inline SVG rather than the ⚙ glyph, which renders as
+     anything from a cog to a colour emoji depending on font fallback.
+
+     Sliders, not a cog: a cog needs its teeth to read, and at 19px on a dark
+     ground the teeth collapse into a ring of dots that looks like a sun — which
+     is exactly what the first attempt did. Three sliders stay legible at any
+     size and say "settings" just as plainly. */
+  function gearButton(id) {
+    return '<button class="helpbtn infoot" type="button" id="' + id + '" aria-label="Settings">' +
+      '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" ' +
+        'stroke="currentColor" stroke-width="1.9" stroke-linecap="round">' +
+        '<path d="M3 7h12M19 7h2M3 12h4M11 12h10M3 17h9M16 17h5"/>' +
+        '<circle cx="17" cy="7" r="2.1"/><circle cx="9" cy="12" r="2.1"/><circle cx="14" cy="17" r="2.1"/>' +
+      "</svg></button>";
+  }
+
   function bindHelp(host) {
     if (!host) return;
     var list = host.querySelectorAll('[data-help]');
@@ -212,11 +228,13 @@ var UI = (function (root) {
     }).join("");
 
     var d = home.daily;
+    /* No leading separator: the streak note sits on its own line under "Daily",
+       where a dangling "·" reads as a typo rather than a divider. */
     var streakTxt = d.solvedToday
-      ? "· solved today"
+      ? "solved today"
       : (d.streak > 0 && !d.dead
-          ? "· " + d.streak + " day streak"
-          : "· play today");
+          ? d.streak + " day streak"
+          : "play today");
     var streakCls = d.dead || (!d.streak && !d.solvedToday) ? "streak cold" : "streak";
 
     $("s-home").innerHTML =
@@ -252,6 +270,7 @@ var UI = (function (root) {
             '<span class="' + streakCls + '">' + streakTxt + "</span></button>" +
           '<button class="ghost" id="btn-stats" type="button">Stats</button>' +
           helpButton("home-help", "infoot") +
+          gearButton("home-settings") +
         "</div>" +
       "</div>";
 
@@ -261,6 +280,7 @@ var UI = (function (root) {
       startLevel(target.tierKey, target.level);
     });
     bindHelp($("s-home"));
+    $("home-settings").addEventListener("click", openSettings);
     $("btn-daily").addEventListener("click", function () { Sound.unlock(); MetaUI.openCalendar(); });
     $("btn-stats").addEventListener("click", function () { Sound.unlock(); MetaUI.openRecords(); });
 
@@ -953,6 +973,45 @@ var UI = (function (root) {
       closeOverlay();
       if (G.state && G.state.armHint) { G.state.armHint = false; Celebrate.after(240, doHint); }
     });
+  }
+
+  /* SETTINGS. One definition, opened from the home footer and from the records
+     screen's settings row; the in-game pause menu carries the same two toggles
+     inline so you never have to leave a board to mute it. Sound and haptics are
+     independent on purpose — the phone can still tap back with the volume off,
+     which is the only feedback you get on a blocked tap in a silent room. */
+  function openSettings() {
+    Sound.unlock();
+    function label() {
+      var s = $("set-sound"), h = $("set-haptics");
+      if (s) s.textContent = "Sound · " + (Sound.isEnabled() ? "on" : "off");
+      if (h) h.textContent = "Haptics · " + (Sound.hasHaptics() ? "on" : "off");
+    }
+    openOverlay(
+      "<h2>SETTINGS</h2>" +
+      '<div class="stack">' +
+        '<button class="ghost" id="set-sound" type="button">Sound · ' +
+          (Sound.isEnabled() ? "on" : "off") + "</button>" +
+        '<button class="ghost" id="set-haptics" type="button">Haptics · ' +
+          (Sound.hasHaptics() ? "on" : "off") + "</button>" +
+        '<button class="ghost" id="set-howto" type="button">How to play</button>' +
+      "</div>" +
+      '<p class="dim" style="margin-top:var(--s3)">Both are remembered between sessions. ' +
+        "Haptics work independently of sound, so the phone can still tap back with the volume down.</p>" +
+      '<button class="cta" id="set-ok" type="button" style="margin-top:var(--s3)">Done</button>'
+    );
+    $("set-sound").addEventListener("click", function () {
+      Sound.setEnabled(!Sound.isEnabled());
+      label();
+      if (Sound.isEnabled()) Sound.play("launch");   // hear what you just turned on
+    });
+    $("set-haptics").addEventListener("click", function () {
+      Sound.setHaptics(!Sound.hasHaptics());
+      label();
+      if (Sound.hasHaptics()) Sound.buzz("launch");
+    });
+    $("set-howto").addEventListener("click", function () { closeOverlay(); openHowTo(false); });
+    $("set-ok").addEventListener("click", closeOverlay);
   }
 
   function openMenu() {

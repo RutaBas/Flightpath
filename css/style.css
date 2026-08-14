@@ -121,10 +121,22 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
   background:transparent;
 }
 
+/* Four things in the footer — Daily, Stats and two 52px icons — leave the two
+   labelled buttons ~119px at 390px. "Daily · play today" does not fit on one
+   line in that, and letting it wrap mid-phrase reads as broken, so the streak
+   note sits on its own line deliberately, the same shape as the CTA's sub-label.
+   Below 360px it drops out entirely; it is still on the Daily screen, one tap
+   away. */
+.homefoot .streak{display:block;margin-top:1px}
+@media (max-width:360px){
+  .homefoot .streak{display:none}
+}
+
 /* One control, three places: the home title row and every meta header. 44px
    square, so it clears the tap floor on its own. */
 .helpbtn{
   flex:0 0 44px;width:44px;height:44px;padding:0;
+  display:grid;place-items:center;      /* centres the "?" and the gear SVG alike */
   border-radius:50%;
   border:1px solid rgba(195,204,200,.28);
   background:rgba(36,42,46,.72);
