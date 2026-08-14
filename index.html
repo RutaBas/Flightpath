@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+
+<!-- ios-tap-hygiene — viewport-fit=cover is what makes env(safe-area-inset-*)
+     non-zero; without it the CSS --safe-* variables are always 0 and the notch
+     overlaps the HUD. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+
+<!-- matches --ground, so the iOS status bar band has no seam against the game -->
+<meta name="theme-color" content="#1a1e21">
+
+<!-- Both, deliberately: Chrome deprecated the apple- prefixed one and warns in
+     the console, but older iOS still needs it for standalone display. -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Flightpath">
+
+<meta name="description" content="Flightpath — tap an arrow to launch it, but only if its whole lane is clear.">
+
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="manifest" href="manifest.webmanifest">
+
+<title>Flightpath</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Martian+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- HOME — title plate, one primary action, the ladder. Rendered by ui.js. -->
+  <section class="screen" id="s-home" hidden></section>
+
+  <!-- IN GAME — board dominant, chrome slim, no timer on screen. -->
+  <section class="screen" id="s-game" hidden>
+    <div id="game-bg"></div>
+    <div class="layer">
+      <div class="hud">
+        <button class="chev" id="btn-back" type="button" aria-label="Back to the ladder"></button>
+        <div class="hudmid">
+          <div class="t mono" id="hud-tier">CLEAR SKIES</div>
+          <div class="l" id="hud-level">LEVEL 1</div>
+        </div>
+        <div class="hearts" id="hearts" aria-label="lives"></div>
+      </div>
+
+      <div class="boardwrap">
+        <div class="boardbox" id="boardbox">
+          <div id="board" class="board" role="grid" aria-label="Flightpath board"></div>
+          <svg id="board-fx" aria-hidden="true"></svg>
+        </div>
+      </div>
+
+      <p class="status mono" id="status"></p>
+
+      <div class="tools">
+        <button class="tool" id="btn-hint" type="button">Hint<span class="k" id="hint-k">3 LEFT</span></button>
+        <button class="tool" id="btn-undo" type="button">Undo<span class="k">LAST LAUNCH</span></button>
+        <button class="tool" id="btn-menu" type="button">Menu<span class="k">PAUSE</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- WIN — the payoff. Rendered by ui.js. -->
+  <section class="screen" id="s-win" hidden></section>
+
+  <!-- OUT OF LIVES — reveals the lanes that were shut. Rendered by ui.js. -->
+  <section class="screen" id="s-fail" hidden></section>
+
+  <!-- LEVEL MAP / DAILY CALENDAR / RECORDS. Rendered by meta-ui.js. -->
+  <section class="screen" id="s-meta" hidden></section>
+
+</div>
+
+<div id="fx" aria-hidden="true"></div>
+<div class="overlay" id="overlay" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- the verified logic core, untouched, in load order -->
+<script src="js/rng.js"></script>
+<script src="js/board.js"></script>
+<script src="js/solver.js"></script>
+<script src="js/generator.js"></script>
+
+<!-- the shared meta-layer, vendored by games/_shared/sync.js — never edited here -->
+<script src="js/meta/store.js"></script>
+<script src="js/meta/rng.js"></script>
+<script src="js/meta/progress.js"></script>
+<script src="js/meta/daily.js"></script>
+<script src="js/meta/records.js"></script>
+<script src="js/meta/rank.js"></script>
+<script src="js/meta/index.js"></script>
+
+<!-- the app layer -->
+<script src="js/history.js"></script>
+<script src="js/timer.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/celebrate.js"></script>
+<script src="js/gestures.js"></script>
+<script src="js/tap-guard.js"></script>
+<script src="js/art.js"></script>
+<script src="js/par.js"></script>
+<script src="js/levels.js"></script>
+<script src="js/meta-config.js"></script>
+<script src="js/game.js"></script>
+<script src="js/meta-ui.js"></script>
+<script src="js/ui.js"></script>
+
+</body>
+</html>

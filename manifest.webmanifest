@@ -1,0 +1,26 @@
+{
+  "name": "Flightpath — tap-away arrow puzzle",
+  "short_name": "Flightpath",
+
+  "description": "Tap an arrow to launch it — but only if its whole lane is clear. Five tiers of airspace, three lives a level.",
+
+  "start_url": "./",
+  "scope": "./",
+
+  "display": "standalone",
+  "orientation": "portrait",
+
+  "background_color": "#1a1e21",
+  "theme_color": "#1a1e21",
+
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    {
+      "src": "icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

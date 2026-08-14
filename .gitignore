@@ -1,0 +1,24 @@
+# --- build cruft ---
+node_modules/
+package-lock.json
+
+# --- test artefacts ---
+test/shot-*.png
+
+# --- design-process visuals ---
+# These stay on disk — they are how the design gate was run, and they are worth
+# keeping locally — but they are not part of the shipped game and would confuse
+# anyone reading the repo. design-brief.md is deliberately NOT ignored: the
+# written brief is useful repo documentation. Add it below if you would rather
+# keep it local-only.
+design-*.html
+accent-compare*.html
+*-review.html
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.log

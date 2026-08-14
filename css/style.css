@@ -1,0 +1,407 @@
+/* ================================================================
+   ios-tap-hygiene — pasted from games/_recipes/ios-tap-hygiene/base.css.txt
+   at the TOP of the file, before the palette. Defensive only, nothing visual.
+   ================================================================ */
+
+:root{
+  /* Non-zero only when the viewport meta carries viewport-fit=cover. Applied
+     on every full-screen element below. */
+  --safe-t:env(safe-area-inset-top);
+  --safe-b:env(safe-area-inset-bottom);
+  --safe-l:env(safe-area-inset-left);
+  --safe-r:env(safe-area-inset-right);
+}
+
+*{
+  box-sizing:border-box;
+  -webkit-tap-highlight-color:transparent;   /* no grey flash box on tap */
+}
+
+html,body{ height:100%; }
+
+body{
+  margin:0;
+  /* position:fixed + overscroll-behavior:none is what actually stops
+     pull-to-refresh; overflow:hidden alone does not. */
+  position:fixed; inset:0;
+  overflow:hidden;
+  overscroll-behavior:none;
+
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+
+  background:var(--ground); color:var(--ink);
+  font-family:'Archivo',system-ui,sans-serif; line-height:1.5;
+}
+
+/* `manipulation` is the real fix for double-tap zoom — user-scalable=no is
+   ignored by Safari. */
+button,.tappable,.cell,.tile{ touch-action:manipulation; }
+
+/* The board only: we own every gesture inside it. Never on body. */
+#board{ touch-action:none; }
+
+.scrollable{
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+}
+
+.tabular,b{ font-variant-numeric:tabular-nums; }
+
+/* ================================================================
+   FLIGHTPATH — Wind Tunnel, 1935. Palette and type per design-brief.md,
+   layout lifted from design-screens.html.
+   ================================================================ */
+
+:root{
+  --ground:#1a1e21; --panel:#242a2e; --cell:#2e353a; --ink:#e3e8e6; --dim:#8d9a97;
+  --dom:#c3ccc8; --accent:#c2853c; --err:#a35c50; --ok:#6f9188;
+  --s1:4px; --s2:8px; --s3:16px; --s4:24px; --s5:32px;
+  --tile:48px; --gap:5px; --bpad:8px;
+  --ease:cubic-bezier(.2,.8,.3,1);
+}
+
+.mono{font-family:'Martian Mono','SFMono-Regular',ui-monospace,monospace}
+
+/* ------------------------------------------------------------ scaffolding */
+
+#app{position:fixed;inset:0;overflow:hidden;background:var(--ground)}
+
+.screen{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.screen[hidden]{display:none}
+
+/* The win and fail screens carry the most content, so they are allowed to
+   scroll on a short phone rather than clipping the buttons off the bottom.
+   pan-y only — the board's own touch-action:none is untouched. */
+.layer.scroll{
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+}
+
+/* the anchor-derived background sits behind every screen's content */
+.bgl{position:absolute;inset:0;z-index:0;pointer-events:none;width:100%;height:100%}
+
+.layer{
+  position:relative;z-index:1;
+  display:flex;flex-direction:column;
+  height:100%;
+  padding:calc(var(--safe-t) + 10px) calc(var(--safe-r) + 12px)
+          calc(var(--safe-b) + 12px) calc(var(--safe-l) + 12px);
+}
+
+/* Below the 390px design target the board is width-bound, so claw back what
+   the layer padding is spending. At 390 the numbers are the measured ones:
+   366px inner, 45px tiles at 7 columns. */
+@media (max-width:380px){
+  .layer{
+    padding-left:calc(var(--safe-l) + 8px);
+    padding-right:calc(var(--safe-r) + 8px);
+  }
+}
+
+/* ---------------------------------------------------------------- title */
+
+.plate{
+  align-self:center;text-align:center;
+  padding:var(--s3) var(--s4);
+  border:1px solid rgba(195,204,200,.34);border-radius:6px;
+  background:rgba(20,24,26,.68);
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+  position:relative;
+}
+.plate::before,.plate::after{content:"";position:absolute;width:11px;height:11px;border:1.5px solid var(--accent)}
+.plate::before{top:5px;left:5px;border-right:0;border-bottom:0}
+.plate::after{bottom:5px;right:5px;border-left:0;border-top:0}
+.plate .word{font-weight:800;font-size:31px;letter-spacing:.15em;line-height:1;margin:0;text-indent:.15em}
+.plate .rule{height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);margin:9px 0 7px}
+.plate .kicker{font-family:'Martian Mono',monospace;font-size:8.5px;letter-spacing:.2em;color:var(--dim);margin:0}
+.lamp{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent);display:inline-block;vertical-align:middle;margin:0 6px}
+
+/* ---------------------------------------------------------------- buttons */
+
+.cta{
+  display:block;width:100%;border:0;border-radius:12px;
+  background:var(--accent);color:#14181a;
+  font-family:'Archivo',system-ui,sans-serif;font-weight:800;font-size:17px;letter-spacing:.02em;
+  padding:16px;min-height:56px;cursor:pointer;box-shadow:0 4px 0 #8f5f24;
+  transition:transform 40ms var(--ease),box-shadow 40ms var(--ease);
+}
+.cta:active{transform:translateY(3px);box-shadow:0 1px 0 #8f5f24}
+.cta small{display:block;font-family:'Martian Mono',monospace;font-weight:400;font-size:9.5px;letter-spacing:.14em;opacity:.72;margin-top:3px}
+
+.ghost{
+  flex:1;border-radius:12px;background:transparent;
+  border:1px solid rgba(195,204,200,.34);color:var(--ink);
+  font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:14px;
+  padding:14px;min-height:52px;cursor:pointer;
+  transition:transform 40ms var(--ease),background 120ms linear;
+}
+.ghost:active{transform:scale(.97);background:rgba(195,204,200,.07)}
+.btnrow{display:flex;gap:var(--s2);margin-top:var(--s3)}
+
+/* ---------------------------------------------------------------- home */
+
+/* THE LADDER IS THE DOMINANT ELEMENT ON THE HOME SCREEN.
+   It absorbs the slack instead of a single dead gap above the bottom row:
+   `.tiers` grows, its rows grow with it between a 56px floor (well clear of the
+   44px tap target) and an 80px ceiling (so they never read as slabs on a tall
+   phone), and `space-between` spreads whatever is left over as even gaps rather
+   than pooling it in one 225px void. */
+.tiers{
+  display:flex;flex-direction:column;gap:var(--s2);
+  flex:1 1 auto;min-height:0;justify-content:space-between;
+}
+.tier{
+  display:flex;align-items:center;gap:var(--s3);
+  padding:11px var(--s3);border-radius:10px;
+  background:rgba(36,42,46,.82);border:1px solid rgba(195,204,200,.13);
+  width:100%;text-align:left;color:var(--ink);
+  font-family:'Archivo',system-ui,sans-serif;cursor:pointer;
+  flex:1 1 auto;min-height:56px;max-height:80px;
+}
+/* Pinned to the bottom, but by its own margin — not by `margin-top:auto`,
+   which is what put the whole slack in one place. */
+.homefoot{display:flex;gap:var(--s2);flex:0 0 auto;margin-top:var(--s3)}
+.homefoot .ghost{min-height:52px}
+.homefoot .streak{font-family:'Martian Mono',monospace;font-size:9px;color:var(--ok)}
+.homefoot .streak.cold{color:var(--dim)}
+.tier .num{font-family:'Martian Mono',monospace;font-size:10px;color:var(--dim);width:18px}
+.tier .nm{font-weight:600;font-size:15px;flex:1}
+.tier .nm .sub{font-family:'Martian Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.04em}
+.tier .pr{font-family:'Martian Mono',monospace;font-size:10px;color:var(--dim)}
+.tier.locked{opacity:.42}
+.tier.cur{border-color:var(--accent);background:rgba(194,133,60,.13)}
+.tier:active{transform:scale(.99)}
+.bar{height:3px;border-radius:2px;background:rgba(195,204,200,.16);margin-top:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);transition:width 400ms var(--ease)}
+
+/* ---------------------------------------------------------------- HUD */
+
+.hud{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s3)}
+.chev{
+  width:44px;height:44px;border-radius:9px;
+  border:1px solid rgba(195,204,200,.2);
+  display:grid;place-items:center;background:rgba(36,42,46,.7);
+  padding:0;cursor:pointer;
+}
+.chev:active{transform:scale(.94)}
+.hudmid{text-align:center;line-height:1.25}
+.hudmid .t{font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:.18em;color:var(--dim)}
+.hudmid .l{font-weight:800;font-size:16px;letter-spacing:.02em}
+.hearts{display:flex;gap:5px;min-width:44px;justify-content:flex-end}
+.heart{width:17px;height:17px}
+.heart.gone{opacity:.2}
+@keyframes heartburn{
+  0%{transform:scale(1)}
+  35%{transform:scale(1.45) rotate(-6deg)}
+  100%{transform:scale(1)}
+}
+.heart.burning{animation:heartburn 420ms var(--ease)}
+
+/* ---------------------------------------------------------------- board */
+
+.boardwrap{
+  flex:1 1 auto;min-height:0;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;
+}
+.boardbox{position:relative}
+.board{
+  display:grid;gap:var(--gap);padding:var(--bpad);border-radius:14px;
+  background:var(--panel);
+  box-shadow:0 8px 26px rgba(0,0,0,.4),inset 0 0 0 1px rgba(195,204,200,.07);
+  position:relative;
+}
+.cell{
+  position:relative;width:var(--tile);height:var(--tile);
+  padding:0;border:0;background:none;
+  will-change:transform;
+}
+.cell svg{display:block;width:100%;height:100%;pointer-events:none}
+.cell.sky{opacity:0}
+.cell.arrow{cursor:pointer}
+/* pressed state — a tap that can cost a life must feel like it registered */
+.cell.press{transform:scale(.94);transition:transform 40ms var(--ease)}
+.cell.gone{visibility:hidden}
+
+@keyframes blockpulse{
+  0%{filter:none}
+  18%{filter:drop-shadow(0 0 9px var(--err)) saturate(1.4)}
+  100%{filter:none}
+}
+.cell.blocker{animation:blockpulse 300ms var(--ease)}
+.cell.blocker .facefill{fill:var(--err)}
+.cell.hinted .facefill{fill:#33474a}
+.cell.hinted{animation:hintpulse 900ms var(--ease) 2}
+@keyframes hintpulse{
+  0%,100%{filter:none}
+  40%{filter:drop-shadow(0 0 10px var(--ok))}
+}
+
+/* the lane overlay: blocked lanes and hint rays are drawn here */
+#board-fx,#fail-fx{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:visible}
+
+.status{
+  font-family:'Martian Mono',monospace;text-align:center;font-size:10px;
+  color:var(--dim);letter-spacing:.12em;margin:var(--s3) 0 0;min-height:14px;
+}
+.status.warn{color:var(--err)}
+
+.tools{display:flex;gap:var(--s2);margin-top:auto;padding-top:var(--s3)}
+.tool{
+  flex:1;border-radius:11px;background:rgba(36,42,46,.9);
+  border:1px solid rgba(195,204,200,.16);color:var(--ink);
+  font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:13px;
+  padding:12px;min-height:50px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+  transition:transform 40ms var(--ease);
+}
+.tool:active{transform:scale(.96)}
+.tool[disabled]{opacity:.4}
+.tool .k{font-family:'Martian Mono',monospace;font-size:8.5px;color:var(--dim);letter-spacing:.1em}
+
+/* ------------------------------------------------------------ win / fail */
+
+.banner{text-align:center;margin-bottom:var(--s2)}
+.banner .big{font-weight:800;font-size:29px;letter-spacing:.09em;margin:0;line-height:1.05}
+.banner .small{font-family:'Martian Mono',monospace;font-size:9px;letter-spacing:.2em;color:var(--dim);margin:6px 0 0}
+
+.stars{display:flex;justify-content:center;gap:var(--s2);margin:var(--s3) 0}
+.star{width:44px;height:44px}
+/* stars land ONE AT A TIME — all three at once reads as a popup */
+.star.pending{opacity:0;transform:scale(.4)}
+@keyframes starland{
+  0%{opacity:0;transform:scale(.35) rotate(-25deg)}
+  60%{opacity:1;transform:scale(1.18) rotate(4deg)}
+  100%{opacity:1;transform:scale(1) rotate(0)}
+}
+.star.land{animation:starland 380ms var(--ease) both}
+
+.stats{
+  background:rgba(36,42,46,.86);border:1px solid rgba(195,204,200,.13);
+  border-radius:12px;padding:var(--s3);display:flex;flex-direction:column;gap:9px;
+}
+.row{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;gap:var(--s2)}
+.row .k{font-family:'Martian Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--dim)}
+.row .v{font-weight:600}
+.row .v.good{color:var(--ok)} .row .v.warn{color:var(--accent)}
+.hr{height:1px;background:rgba(195,204,200,.14);margin:2px 0}
+
+#fx{position:fixed;inset:0;z-index:60;pointer-events:none;overflow:hidden}
+#fx i{position:absolute;border-radius:1px}
+
+/* ---------------------------------------------------------------- overlays */
+
+.overlay{
+  position:fixed;inset:0;z-index:80;
+  background:rgba(12,15,16,.78);
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;
+  padding:calc(var(--safe-t) + 16px) 16px calc(var(--safe-b) + 16px);
+}
+.overlay[hidden]{display:none}
+.sheet{
+  width:100%;max-width:360px;max-height:100%;
+  background:var(--panel);border:1px solid rgba(195,204,200,.16);
+  border-radius:16px;padding:var(--s4);
+  box-shadow:0 18px 46px rgba(0,0,0,.5);
+}
+.sheet h2{font-size:19px;font-weight:800;letter-spacing:.06em;margin:0 0 var(--s2)}
+.sheet p{font-size:14px;color:var(--ink);margin:0 0 var(--s3);line-height:1.6}
+.sheet p.dim{color:var(--dim);font-size:12.5px}
+.sheet .btnrow{margin-top:var(--s3)}
+.sheet .stack{display:flex;flex-direction:column;gap:var(--s2)}
+.sheet .stack .ghost{flex:none;width:100%}
+
+.demo{display:flex;justify-content:center;margin:0 0 var(--s3)}
+.demo .board{background:rgba(26,30,33,.7)}
+
+#toast{
+  position:fixed;left:50%;bottom:calc(var(--safe-b) + 22px);transform:translateX(-50%);
+  z-index:90;pointer-events:none;
+  background:rgba(20,24,26,.94);border:1px solid rgba(195,204,200,.2);
+  color:var(--ink);font-family:'Martian Mono',monospace;font-size:10.5px;letter-spacing:.08em;
+  padding:10px 14px;border-radius:9px;opacity:0;transition:opacity 200ms linear;
+  max-width:82vw;text-align:center;
+}
+#toast.show{opacity:1}
+
+/* ======================================================= META SCREENS ====
+   Level map, daily calendar, records. Same materials as the board screen —
+   panel beds, mono labels, the signal lamp reserved for state. */
+
+.metahud{margin-bottom:var(--s3)}
+
+/* --- level map --- */
+.lvlgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--s2)}
+.lvl{
+  min-height:56px;border-radius:10px;padding:6px 2px 5px;
+  background:rgba(36,42,46,.86);border:1px solid rgba(195,204,200,.13);
+  color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  cursor:pointer;transition:transform 40ms var(--ease);
+}
+.lvl:active{transform:scale(.95)}
+.lvl .n{font-size:14px;font-weight:600}
+.lvl.done{border-color:rgba(111,145,136,.5)}
+.lvl.perfect{background:rgba(111,145,136,.16);border-color:var(--ok)}
+.lvl.locked{opacity:.38;cursor:default}
+.lvl .lk{opacity:.7;height:12px}
+.pips{display:flex;gap:2px}
+.pips .star.pip{width:9px;height:9px}
+.gatecard{
+  background:rgba(194,133,60,.10);border:1px solid rgba(194,133,60,.42);
+  border-radius:12px;padding:var(--s3);margin-bottom:var(--s3);
+}
+.gatecard .row{margin-bottom:6px}
+
+/* --- calendar --- */
+.calhead{display:flex;align-items:center;justify-content:space-between;margin:var(--s4) 0 var(--s2);font-size:12px;letter-spacing:.12em}
+.calnav{
+  width:44px;height:44px;border-radius:10px;border:1px solid rgba(195,204,200,.2);
+  background:rgba(36,42,46,.7);color:var(--ink);font-size:18px;line-height:1;cursor:pointer;
+}
+.dowrow{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:9px;color:var(--dim);text-align:center;margin-bottom:4px}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.day{
+  aspect-ratio:1/1;min-height:44px;border-radius:9px;padding:0;
+  background:rgba(36,42,46,.7);border:1px solid rgba(195,204,200,.1);
+  color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  cursor:pointer;
+}
+.day.pad{background:none;border:0;pointer-events:none}
+.day .dom{font-size:11px}
+.day .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.day.solved{border-color:rgba(111,145,136,.55)}
+.day.today{border-color:var(--accent);background:rgba(194,133,60,.13)}
+.day.future{opacity:.28;cursor:default}
+
+/* --- records --- */
+.reccard{margin-bottom:var(--s2)}
+/* The one saturated block on the records screen. */
+.badge{
+  background:var(--accent);color:#14181a;border-radius:14px;
+  padding:var(--s3) var(--s4);margin-bottom:var(--s3);
+  display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;
+}
+.badge .big{font-weight:800;font-size:26px;letter-spacing:.06em}
+.badge .lbl{font-size:8.5px;letter-spacing:.18em;opacity:.75}
+.badge.quiet{background:rgba(36,42,46,.86);color:var(--ink);border:1px solid rgba(195,204,200,.13)}
+
+/* ---------------------------------------------------- reduced motion gate */
+/* Near-zero, never `none`: a duration of 0 skips animationend/transitionend
+   and anything waiting on those events never advances. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+  }
+}
