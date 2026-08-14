@@ -29,12 +29,17 @@
                                 meta-config gates rescaled, meta-ui level map
                                 chunked, js/meta/progress.js re-vendored with
                                 aggregate counters
+     flightpath-v6  2026-08-13  daily rotation escalates across all 7 tiers
+                                (Mon easiest, Sun Airspace Closed); frozen
+                                dailies now pin their tier as well as their
+                                board (fp:dailyboards v2); persistent "?" help
+                                control on home and every meta header
 
    Anything missing from PRECACHE 404s OFFLINE ONLY — which passes every test
    run at a desk. Install to the home screen and switch on airplane mode before
    calling this done. */
 
-var CACHE_VERSION = "flightpath-v5";
+var CACHE_VERSION = "flightpath-v6";
 
 /* index.html, walked top to bottom. Google Fonts is deliberately absent: it is
    cross-origin, is never intercepted below, and the stack falls back to

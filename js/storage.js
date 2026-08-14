@@ -37,7 +37,7 @@ var Store = (function () {
     save: 2,                    // gained mode/tierKey/dateKey when the meta-layer landed
     progress: 1,
     seen: 1,
-    dailyboards: 1
+    dailyboards: 2      // gained the tier alongside the board
   };
 
   var SCHEMA = "__schema";
@@ -126,8 +126,11 @@ var Store = (function () {
                    deliberately: it is the migration's source, and deleting it
                    would make that migration unrepeatable.
        seen        { howto:true }
-       dailyboards { "YYYY-MM-DD": "FP1;..." } — solved dailies frozen so a
-                   replay is the board that was actually played that day */
+       dailyboards (v2) { "YYYY-MM-DD": { b: "FP1;...", t: "<tierKey>" } }
+                   — a daily is frozen the first time its date is opened, board
+                   AND tier, so a later change to the rotation cannot move a
+                   board someone has already played or re-file it under another
+                   tier's records. v1 stored the bare board string. */
   var MIGRATIONS = {
     save: {
       /* v1 -> v2. The pre-meta build identified a level by a GLOBAL 1..200
@@ -164,7 +167,35 @@ var Store = (function () {
     },
     progress: {},
     seen: {},
-    dailyboards: {}
+    dailyboards: {
+      /* v1 -> v2. A frozen daily used to be just the board string. It now
+         carries the TIER it was played at as well, because the daily rotation
+         is config and config changes: if Sunday stops being Holding and becomes
+         Airspace Closed, a board frozen under the old rotation must still be
+         priced, recorded and labelled as the tier it was actually played at.
+         Storing only the board left the tier to be re-derived from today's
+         rotation, which would quietly file an old easy board under a hard
+         tier's records.
+
+         Total by construction: any entry that is not a usable board string is
+         dropped rather than guessed at. Losing one replayable past board beats
+         a calendar that cannot open. */
+      2: function (old) {
+        var out = {};
+        if (!old || typeof old !== "object") return out;
+        Object.keys(old).forEach(function (dateKey) {
+          var v = old[dateKey];
+          if (typeof v === "string" && v.indexOf("FP1;") === 0) {
+            /* Tier unknown: it was never stored. null means "ask the plan",
+               which is the same behaviour this build had before the change. */
+            out[dateKey] = { b: v, t: null };
+          } else if (v && typeof v === "object" && typeof v.b === "string") {
+            out[dateKey] = { b: v.b, t: v.t || null };
+          }
+        });
+        return out;
+      }
+    }
   };
 
   function migrateSlot(slot) {

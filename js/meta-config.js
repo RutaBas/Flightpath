@@ -118,12 +118,25 @@ var Meta = (function () {
     curves: curves,
     starsFor: starsFor,
     daily: {
-      /* Difficulty rotation, Sunday first. Easier at the start of the week,
-         congested by the weekend — and Gridlock only on Saturday, so the
-         hardest airspace is an event rather than a wall you hit on a Tuesday.
-         The daily is NOT gated on the campaign: a daily win never writes to the
-         ladder, and the ladder never unlocks a daily. */
-      tierByDow: ["holding", "clear", "light", "light", "holding", "stacked", "gridlock"],
+      /* A WEEKLY ESCALATION ACROSS THE WHOLE LADDER, indexed by getUTCDay()
+         (0 = Sunday). Monday is the gentlest board of the week and each day
+         steps up one tier, cresting on Sunday:
+
+           Mon Clear Skies · Tue Light Traffic · Wed Holding · Thu Stacked
+           Fri Gridlock · Sat Ground Stop · Sun Airspace Closed
+
+         The daily is NOT gated on the campaign — a daily win never writes to
+         the ladder and the ladder never unlocks a daily — which is what makes
+         a Sunday Airspace Closed fair to offer to a player who has never
+         reached that tier: it is an invitation, not a requirement.
+
+         And failing one costs nothing but time. A lost daily calls no
+         recordWin, writes nothing to this module, and the fail screen's "Run it
+         again" hands back the same board with three fresh lives; the streak
+         only ever advances on a solve. The only thing that breaks a streak is a
+         day with no solve in it at all, which is the ordinary missed-day rule
+         and is what the freezes below are for. */
+      tierByDow: ["closed", "clear", "light", "holding", "stacked", "gridlock", "groundstop"],
       /* Miss a day and a freeze is spent instead of the streak resetting.
          Earned by keeping it going, capped at three. */
       freezes: { max: 3, earnEvery: 7 },

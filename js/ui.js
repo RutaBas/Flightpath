@@ -71,6 +71,28 @@ var UI = (function (root) {
     window.scrollTo(0, 0);
   }
 
+  /* ONE help control, one handler, one overlay. Rendered into the home title
+     row and into every meta-screen header; the in-game pause menu and the
+     settings block on the records screen call the same openHowTo(). There is
+     no second copy of the content anywhere. */
+  function helpButton(id, cls) {
+    return '<button class="helpbtn' + (cls ? " " + cls : "") + '" type="button" data-help="1"' +
+      (id ? ' id="' + id + '"' : "") +
+      ' aria-label="How to play">?</button>';
+  }
+
+  function bindHelp(host) {
+    if (!host) return;
+    var list = host.querySelectorAll('[data-help]');
+    for (var i = 0; i < list.length; i++) {
+      list[i].addEventListener("click", function (e) {
+        if (e && e.stopPropagation) e.stopPropagation();
+        Sound.unlock();
+        openHowTo(false);
+      });
+    }
+  }
+
   function tierName(key) {
     var d = Meta.tierByKey(key);
     return d ? d.name : key;
@@ -96,15 +118,30 @@ var UI = (function (root) {
      last 90 days so the slot cannot grow without limit. */
   function frozenDaily(dateKey) {
     var m = Store.get("dailyboards", {}) || {};
-    return m[dateKey] || null;
+    var v = m[dateKey];
+    if (!v) return null;
+    /* v1 entries were a bare board string; storage.js migrates them, but be
+       tolerant in case one is written by an older tab mid-deploy. */
+    return typeof v === "string" ? { b: v, t: null } : v;
   }
-  function freezeDaily(dateKey, boardStr) {
+  function freezeDaily(dateKey, boardStr, tierKey) {
     var m = Store.get("dailyboards", {}) || {};
-    if (m[dateKey]) return;
-    m[dateKey] = boardStr;
+    if (m[dateKey]) return;                 // never move a board already pinned
+    m[dateKey] = { b: boardStr, t: tierKey || null };
     var keys = Object.keys(m).sort();
     while (keys.length > 90) { delete m[keys.shift()]; }
     Store.set("dailyboards", m);
+  }
+
+  /* Which tier a given date is played at. A date that has already been opened
+     or solved keeps the tier it had; only a date nobody has touched picks up
+     the current rotation. That is what makes the rotation safe to change. */
+  function dailyTier(plan) {
+    var frozen = frozenDaily(plan.dateKey);
+    if (frozen && frozen.t) return frozen.t;
+    var entry = Meta.daily.entry(plan.dateKey);
+    if (entry && entry.tier) return entry.tier;
+    return plan.tier;
   }
 
   /* ============================================================== HOME ==== */
@@ -191,11 +228,17 @@ var UI = (function (root) {
            them in CSS — see the max-height:700px block in css/style.css. With
            seven tiers the ladder needs every pixel on an SE. */
         '<div class="hgap hgap-a"></div>' +
+        /* The help control rides ON the title plate, anchored to its right edge.
+           It cannot sit BESIDE the plate: "FLIGHTPATH" needs ~291px and even a
+           390px screen only leaves 75px of gutter, so a 44px button each side
+           (88px) would squeeze the signed-off lockup at every phone width. On
+           the plate it costs no vertical space at all and is always visible. */
         '<div class="plate">' +
           '<p class="word">FLIGHTPATH</p>' +
           '<div class="rule"></div>' +
           '<p class="kicker">AERO TEST SECTION<span class="lamp"></span>No. ' +
             (home.clearedCount + 1) + "</p>" +
+          helpButton("home-help", "onplate") +
         "</div>" +
         '<div class="hgap hgap-b"></div>' +
         '<button class="cta" id="btn-play" type="button">' + ctaLabel +
@@ -214,6 +257,7 @@ var UI = (function (root) {
       if (resumable) { resume(); return; }
       startLevel(target.tierKey, target.level);
     });
+    bindHelp($("s-home"));
     $("btn-daily").addEventListener("click", function () { Sound.unlock(); MetaUI.openCalendar(); });
     $("btn-stats").addEventListener("click", function () { Sound.unlock(); MetaUI.openRecords(); });
 
@@ -382,18 +426,53 @@ var UI = (function (root) {
     beginPlay(state);
   }
 
+  /* Building a daily is not free at the top of the rotation: measured over a
+     year of real dates, Sunday's Airspace Closed board averages 28.5ms and
+     worst-cased 99ms on a desktop, so a few hundred ms on a phone. Doing that
+     synchronously on the tap leaves the calendar sitting there looking broken.
+
+     So the screen switches FIRST, with the tier named and the board area
+     saying what it is doing, and the build happens on the next frame. The cost
+     is unchanged; what changes is that the tap is acknowledged immediately. */
   function startDaily(dateKey, opts) {
     var plan = Meta.daily.plan(dateKey);
     var o = opts || {};
-    o.boardStr = frozenDaily(plan.dateKey);
-    var state = FPGame.createDaily(plan.dateKey, plan.tier, o);
-    if (!state) { toast("COULDN'T BUILD TODAY'S BOARD"); return; }
-    freezeDaily(plan.dateKey, state.startStr);
-    Store.clearSave();
-    beginPlay(state);
-    if (Meta.daily.isSolved(plan.dateKey)) {
-      toast("ALREADY SOLVED · REPLAY WON'T CHANGE THE STREAK");
+    var frozen = frozenDaily(plan.dateKey);
+    var tierKey = dailyTier(plan);
+    o.boardStr = frozen ? frozen.b : null;
+
+    showPending("DAILY · " + tierName(tierKey).toUpperCase(), plan.dateKey);
+
+    var build = function () {
+      var state = FPGame.createDaily(plan.dateKey, tierKey, o);
+      if (!state) { toast("COULDN'T BUILD THAT DAY'S BOARD"); renderHome(); return; }
+      freezeDaily(plan.dateKey, state.startStr, tierKey);
+      Store.clearSave();
+      beginPlay(state);
+      if (Meta.daily.isSolved(plan.dateKey)) {
+        toast("ALREADY SOLVED · REPLAY WON'T CHANGE THE STREAK");
+      }
+    };
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function () { setTimeout(build, 0); });
+    } else {
+      setTimeout(build, 0);
     }
+  }
+
+  /* The board screen, dressed but empty, while a board is generated. */
+  function showPending(tierLabel, sub) {
+    G.state = null;
+    showScreen("game");
+    $("game-bg").innerHTML = Art.plainBG();
+    $("board").innerHTML = "";
+    $("board-fx").innerHTML = "";
+    $("hud-tier").textContent = tierLabel;
+    $("hud-level").textContent = sub;
+    $("hearts").innerHTML = "";
+    $("status").textContent = "BUILDING THE SECTION…";
+    $("btn-hint").disabled = true;
+    $("btn-undo").disabled = true;
   }
 
   function resume() {
@@ -841,16 +920,13 @@ var UI = (function (root) {
      recorded in the `seen` slot, and reachable from the records screen and the
      pause menu. */
   function openHowTo(firstRun) {
-    var clear = '<div class="board" style="--tile:38px;grid-template-columns:repeat(4,38px)">' +
-      '<div class="cell">' + Art.cellSVG(Art.tile(1)) + "</div>" +
-      '<div class="cell">' + Art.cellSVG(Art.open()) + "</div>" +
-      '<div class="cell">' + Art.cellSVG(Art.open()) + "</div>" +
-      '<div class="cell">' + Art.cellSVG(Art.open()) + "</div></div>";
-    var shut = '<div class="board" style="--tile:38px;grid-template-columns:repeat(4,38px)">' +
-      '<div class="cell">' + Art.cellSVG(Art.tile(1)) + "</div>" +
-      '<div class="cell">' + Art.cellSVG(Art.open()) + "</div>" +
-      '<div class="cell">' + Art.cellSVG(Art.wall()) + "</div>" +
-      '<div class="cell">' + Art.cellSVG(Art.open()) + "</div></div>";
+    var lane = function (cells) {
+      return '<div class="board" style="--tile:38px;grid-template-columns:repeat(4,38px)">' +
+        cells.map(function (c) { return '<div class="cell">' + Art.cellSVG(c) + "</div>"; }).join("") +
+        "</div>";
+    };
+    var clear = lane([Art.tile(1), Art.open(), Art.open(), Art.open()]);
+    var shut = lane([Art.tile(1), Art.open(), Art.wall(), Art.open()]);
 
     openOverlay(
       "<h2>ONE RULE</h2>" +
@@ -858,8 +934,14 @@ var UI = (function (root) {
       '<div class="demo">' + clear + "</div>" +
       '<p class="dim">Clear lane · tap it and it goes.</p>' +
       '<div class="demo">' + shut + "</div>" +
-      '<p class="dim">Something in the lane · the tap is refused and costs a life. The tile that blocked you lights up.</p>' +
-      '<p class="dim">Walls never move. Open sky is flown over. Three lives per level.</p>' +
+      '<p class="dim">Something in the lane · the tap is refused, and the tile that blocked you lights up.</p>' +
+      '<div class="hr" style="margin:var(--s3) 0"></div>' +
+      '<p class="dim"><b>Walls never move.</b> Open sky is flown over.</p>' +
+      '<p class="dim"><b>A blocked tap costs a life.</b> Three lives; spend the last one and the level fails — ' +
+        "but you can run the same board again straight away.</p>" +
+      '<p class="dim"><b>Stars come from mistakes and hints only.</b> ' +
+        "Three for a clean clear, two for one slip or one hint, one for clearing it. " +
+        "Time is recorded but never scored — think as long as you like.</p>" +
       '<button class="cta" id="howto-ok" type="button">' + (firstRun ? "Start flying" : "Got it") + "</button>"
     );
     $("howto-ok").addEventListener("click", function () {
@@ -927,7 +1009,17 @@ var UI = (function (root) {
     /* The meta screens get a narrow contract, so js/meta-ui.js never reaches
        into the board controller. */
     MetaUI.setContext({
-      show: function (html) { $("s-meta").innerHTML = html; showScreen("meta"); return $("s-meta"); },
+      show: function (html) {
+        $("s-meta").innerHTML = html;
+        showScreen("meta");
+        bindHelp($("s-meta"));          // every meta header carries the same "?"
+        return $("s-meta");
+      },
+      helpButton: helpButton,
+      /* So the calendar labels a date with the tier it will ACTUALLY be played
+         at — the frozen one for a date already opened, today's rotation for a
+         date nobody has touched. */
+      dailyTier: function (plan) { return dailyTier(plan); },
       close: function () { renderHome(); },
       startLevel: startLevel,
       startDaily: startDaily,

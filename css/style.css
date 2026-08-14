@@ -109,6 +109,31 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
 
 /* ---------------------------------------------------------------- title */
 
+/* On the home screen the help control is anchored to the title plate's right
+   edge rather than placed beside it: the lockup is ~291px wide and a 390px
+   screen leaves only 75px of gutter, so nothing can share its row without
+   shrinking it. Anchored, it costs zero vertical space, never moves a tier row,
+   and is on screen the moment the game opens. */
+.helpbtn.onplate{
+  position:absolute;right:-10px;top:50%;transform:translateY(-50%);
+  background:rgba(20,24,26,.92);
+}
+.helpbtn.onplate:active{transform:translateY(-50%) scale(.92)}
+
+/* One control, three places: the home title row and every meta header. 44px
+   square, so it clears the tap floor on its own. */
+.helpbtn{
+  flex:0 0 44px;width:44px;height:44px;padding:0;
+  border-radius:50%;
+  border:1px solid rgba(195,204,200,.28);
+  background:rgba(36,42,46,.72);
+  color:var(--dim);
+  font-family:'Archivo',system-ui,sans-serif;font-weight:800;font-size:17px;line-height:1;
+  cursor:pointer;
+  transition:transform 40ms var(--ease),color 120ms linear,border-color 120ms linear;
+}
+.helpbtn:active{transform:scale(.92);color:var(--accent);border-color:var(--accent)}
+
 .plate{
   align-self:center;text-align:center;
   padding:var(--s3) var(--s4);
@@ -124,6 +149,20 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
 .plate .rule{height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);margin:9px 0 7px}
 .plate .kicker{font-family:'Martian Mono',monospace;font-size:8.5px;letter-spacing:.2em;color:var(--dim);margin:0}
 .lamp{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent);display:inline-block;vertical-align:middle;margin:0 6px}
+
+/* Below the design target the lockup is scaled down a step so the anchored
+   help control still lands on screen. At 390 the plate is ~291px wide and
+   leaves 75px of gutter — plenty. At 360 it leaves 53px and at 320 only 13px,
+   which is less than the 22px the button's right half needs, so the button
+   would hang off the edge. Scaling the word 31 -> 27px and trimming the plate's
+   side padding frees ~55px of gutter and keeps every proportion intact.
+   Nothing changes at 390 or above. */
+@media (max-width:380px){
+  .plate{padding:var(--s3)}
+  .plate .word{font-size:27px}
+  /* and tuck the control closer in, so it clears the edge even at 320px */
+  .helpbtn.onplate{right:-4px}
+}
 
 /* ---------------------------------------------------------------- buttons */
 
@@ -437,6 +476,20 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
 .day.solved{border-color:rgba(111,145,136,.55)}
 .day.today{border-color:var(--accent);background:rgba(194,133,60,.13)}
 .day.future{opacity:.28;cursor:default}
+
+/* --- the week's rotation, on the calendar --- */
+.rotation{
+  margin-top:var(--s4);
+  background:rgba(36,42,46,.7);border:1px solid rgba(195,204,200,.12);
+  border-radius:12px;padding:var(--s3) var(--s3) 10px;
+}
+.rotation .ttl{font-size:8.5px;letter-spacing:.18em;color:var(--dim);margin:0 0 8px}
+.rotrow{display:flex;align-items:center;gap:10px;padding:4px 0;font-size:13px}
+.rotrow .d{font-size:9px;color:var(--dim);width:30px;letter-spacing:.1em}
+.rotrow .nm{flex:1}
+.rotrow .g{font-size:9px;color:var(--dim)}
+.rotrow.on{color:var(--accent)}
+.rotrow.on .d,.rotrow.on .g{color:var(--accent);opacity:.8}
 
 /* --- records --- */
 .reccard{margin-bottom:var(--s2)}

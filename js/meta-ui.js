@@ -29,11 +29,14 @@ var MetaUI = (function () {
     return m + ":" + (r < 10 ? "0" : "") + r;
   }
 
+  /* Every meta screen gets the same header: back on the left, the same help
+     control on the right where the 44px spacer used to be. It replaces dead
+     space, so it costs no layout. */
   function header(title, sub) {
     return '<div class="hud metahud">' +
       '<button class="chev" data-act="back" type="button" aria-label="Back">' + Art.chevronLeft() + "</button>" +
       '<div class="hudmid"><div class="t mono">' + sub + '</div><div class="l">' + title + "</div></div>" +
-      '<div style="width:44px"></div>' +
+      (ctx && ctx.helpButton ? ctx.helpButton() : '<div style="width:44px"></div>') +
       "</div>";
   }
 
@@ -180,6 +183,26 @@ var MetaUI = (function () {
      leaderboard. */
   var calMonth = null;   // ms timestamp of the month being viewed
 
+  /* The week, spelled out. A Sunday that hands you Airspace Closed has to read
+     as the top of a deliberate escalation, not as the generator having a bad
+     day — so the rotation is on the screen, in order, with today marked. */
+  function rotationHTML() {
+    var DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+    var order = [1, 2, 3, 4, 5, 6, 0];        // Monday first, as it is played
+    var today = new Date(Meta.daily.today() * 86400000).getUTCDay();
+    var rows = order.map(function (d) {
+      var plan = Meta.daily.plan(Meta.daily.today() + ((d - today) + 7) % 7);
+      var def = Meta.tierByKey(plan.tier);
+      return '<div class="rotrow' + (d === today ? " on" : "") + '">' +
+        '<span class="mono d">' + DOW[d] + "</span>" +
+        '<span class="nm">' + (def ? def.name : plan.tier) + "</span>" +
+        '<span class="mono g">' + (def ? def.grid : "") + "</span>" +
+        "</div>";
+    }).join("");
+    return '<div class="rotation">' +
+      '<p class="mono ttl">THE WEEK · EASIEST MONDAY, HARDEST SUNDAY</p>' + rows + "</div>";
+  }
+
   function calendar() {
     var view = calMonth == null ? Date.now() : calMonth;
     var cal = Meta.daily.calendar(view);
@@ -203,7 +226,8 @@ var MetaUI = (function () {
         (d.solved ? '<span class="dot"></span>' : "") + "</button>";
     });
 
-    var todayTier = Meta.tierByKey(plan.tier);
+    var effTier = (ctx && ctx.dailyTier) ? ctx.dailyTier(plan) : plan.tier;
+    var todayTier = Meta.tierByKey(effTier);
     var solvedToday = Meta.daily.isSolved(plan.dateKey);
 
     return {
@@ -229,8 +253,10 @@ var MetaUI = (function () {
           "</div>" +
           '<div class="dowrow mono">' + DOW.map(function (d) { return "<span>" + d + "</span>"; }).join("") + "</div>" +
           '<div class="calgrid">' + cells + "</div>" +
+          rotationHTML() +
           '<p class="dim mono" style="text-align:center;font-size:9px;letter-spacing:.12em;margin:var(--s3) 0 0">' +
-            "A SOLVED DAY KEEPS ITS BOARD · REPLAYS DO NOT CHANGE THE STREAK</p>" +
+            "A SOLVED DAY KEEPS ITS BOARD · REPLAYS DO NOT CHANGE THE STREAK<br>" +
+            "FAILING COSTS NO STREAK — RUN THE SAME BOARD AGAIN</p>" +
           '<div style="height:12px"></div>' +
         "</div>",
       bind: function (host) {
