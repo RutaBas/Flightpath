@@ -238,17 +238,20 @@ var UI = (function (root) {
           '<div class="rule"></div>' +
           '<p class="kicker">AERO TEST SECTION<span class="lamp"></span>No. ' +
             (home.clearedCount + 1) + "</p>" +
-          helpButton("home-help", "onplate") +
         "</div>" +
         '<div class="hgap hgap-b"></div>' +
         '<button class="cta" id="btn-play" type="button">' + ctaLabel +
           "<small>" + ctaSub + "</small></button>" +
         '<div class="hgap hgap-c"></div>' +
         '<div class="tiers">' + rows + "</div>" +
+        /* Help sits in the footer beside Daily and Stats. It is icon-only and
+           fixed at 44px so the two labelled buttons keep the width they need —
+           "Daily · play today" does not fit in a third of the row. */
         '<div class="homefoot">' +
           '<button class="ghost" id="btn-daily" type="button">Daily ' +
             '<span class="' + streakCls + '">' + streakTxt + "</span></button>" +
           '<button class="ghost" id="btn-stats" type="button">Stats</button>' +
+          helpButton("home-help", "infoot") +
         "</div>" +
       "</div>";
 

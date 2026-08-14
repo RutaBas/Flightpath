@@ -109,16 +109,17 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
 
 /* ---------------------------------------------------------------- title */
 
-/* On the home screen the help control is anchored to the title plate's right
-   edge rather than placed beside it: the lockup is ~291px wide and a 390px
-   screen leaves only 75px of gutter, so nothing can share its row without
-   shrinking it. Anchored, it costs zero vertical space, never moves a tier row,
-   and is on screen the moment the game opens. */
-.helpbtn.onplate{
-  position:absolute;right:-10px;top:50%;transform:translateY(-50%);
-  background:rgba(20,24,26,.92);
+/* On the home screen the help control lives in the footer, beside Daily and
+   Stats. It is icon-only and fixed-width so the two labelled buttons keep the
+   room they need — "Daily · play today" does not fit in a third of the row —
+   and it matches their shape rather than sitting among them as a circle.
+   The title plate is left alone: it is the signed-off lockup. */
+.helpbtn.infoot{
+  flex:0 0 52px;width:52px;height:auto;min-height:52px;
+  border-radius:12px;
+  border-color:rgba(195,204,200,.34);
+  background:transparent;
 }
-.helpbtn.onplate:active{transform:translateY(-50%) scale(.92)}
 
 /* One control, three places: the home title row and every meta header. 44px
    square, so it clears the tap floor on its own. */
@@ -150,19 +151,10 @@ button,.tappable,.cell,.tile{ touch-action:manipulation; }
 .plate .kicker{font-family:'Martian Mono',monospace;font-size:8.5px;letter-spacing:.2em;color:var(--dim);margin:0}
 .lamp{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent);display:inline-block;vertical-align:middle;margin:0 6px}
 
-/* Below the design target the lockup is scaled down a step so the anchored
-   help control still lands on screen. At 390 the plate is ~291px wide and
-   leaves 75px of gutter — plenty. At 360 it leaves 53px and at 320 only 13px,
-   which is less than the 22px the button's right half needs, so the button
-   would hang off the edge. Scaling the word 31 -> 27px and trimming the plate's
-   side padding frees ~55px of gutter and keeps every proportion intact.
-   Nothing changes at 390 or above. */
-@media (max-width:380px){
-  .plate{padding:var(--s3)}
-  .plate .word{font-size:27px}
-  /* and tuck the control closer in, so it clears the edge even at 320px */
-  .helpbtn.onplate{right:-4px}
-}
+/* The lockup is no longer scaled down on narrow screens. It was, briefly, to
+   make gutter room for a help control anchored to the plate's edge — moving
+   that control into the footer removed the reason, so the signed-off plate now
+   renders at its intended 31px at every width. */
 
 /* ---------------------------------------------------------------- buttons */
 
